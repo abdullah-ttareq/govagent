@@ -1,0 +1,30 @@
+# أسرار وبيئة - يمنع رفعها نهائيًا
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+oci_api_key*
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ملفات مرفوعة من المستخدمين
+uploads/
+
+# نظام التشغيل والمحررات
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

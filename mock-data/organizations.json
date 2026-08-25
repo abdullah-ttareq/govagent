@@ -1,0 +1,70 @@
+{
+  "_note": "بيانات تجريبية خيالية بالكامل للتطوير المحلي فقط. لا تحتوي أسماء جهات أو أشخاص حقيقيين، ولا كلمات مرور. أكمل هذا الملف في مهمة QA-01.",
+  "organizations": [
+    {
+      "id": 1,
+      "name": "هيئة الخدمات الرقمية",
+      "slug": "digital-services",
+      "is_active": true,
+      "subscription": {
+        "status": "active",
+        "seats": 10,
+        "expires_at": "2027-01-01T00:00:00"
+      },
+      "model_settings": { "provider": "mock" },
+      "users": [
+        {
+          "email": "admin@digital-services.test",
+          "full_name": "سارة العتيبي",
+          "role": "admin",
+          "is_active": true
+        },
+        {
+          "email": "n.alharbi@digital-services.test",
+          "full_name": "نورة الحربي",
+          "role": "employee",
+          "is_active": true
+        },
+        {
+          "email": "f.alqahtani@digital-services.test",
+          "full_name": "فيصل القحطاني",
+          "role": "employee",
+          "is_active": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "مركز التخطيط العمراني",
+      "slug": "urban-planning",
+      "is_active": true,
+      "subscription": {
+        "_note": "اشتراك منتهٍ عمدًا — يستخدم في اختبار QA-06.",
+        "status": "expired",
+        "seats": 5,
+        "expires_at": "2025-06-30T00:00:00"
+      },
+      "model_settings": { "provider": "mock" },
+      "users": [
+        {
+          "email": "admin@urban-planning.test",
+          "full_name": "ماجد الشمري",
+          "role": "admin",
+          "is_active": true
+        },
+        {
+          "email": "l.aldosari@urban-planning.test",
+          "full_name": "لمياء الدوسري",
+          "role": "employee",
+          "is_active": true
+        },
+        {
+          "email": "s.alzahrani@urban-planning.test",
+          "full_name": "سلطان الزهراني",
+          "role": "employee",
+          "is_active": false
+        }
+      ]
+    }
+  ]
+}

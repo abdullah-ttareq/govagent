@@ -1,0 +1,33 @@
+"""اختيار مزود المودل حسب الإعداد MODEL_PROVIDER."""
+
+from ..core.config import settings
+from .base import ModelProvider, ModelProviderError
+from .local_provider import LocalModelProvider
+from .mock_provider import MockModelProvider
+from .oracle_provider import OracleModelProvider
+
+_PROVIDERS: dict[str, type[ModelProvider]] = {
+    "mock": MockModelProvider,
+    "oracle": OracleModelProvider,
+    "local": LocalModelProvider,
+}
+
+
+def get_model_provider(name: str | None = None) -> ModelProvider:
+    """يعيد نسخة من المزود المطلوب.
+
+    Args:
+        name: اسم المزود، أو None لاستخدام قيمة MODEL_PROVIDER.
+
+    Raises:
+        ModelProviderError: إذا كان اسم المزود غير مدعوم.
+    """
+    provider_name = (name or settings.model_provider or "").strip().lower()
+    provider_class = _PROVIDERS.get(provider_name)
+    if provider_class is None:
+        supported = ", ".join(sorted(_PROVIDERS))
+        raise ModelProviderError(
+            f"MODEL_PROVIDER='{provider_name}' غير مدعوم. "
+            f"القيم المدعومة: {supported}."
+        )
+    return provider_class()
