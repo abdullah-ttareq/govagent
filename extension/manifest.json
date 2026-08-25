@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "GovAgent",
+  "version": "0.1.0",
+  "description": "مساعد ذكاء اصطناعي عام لموظفي الجهات الحكومية — نسخة MVP.",
+  "action": {
+    "default_title": "GovAgent",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

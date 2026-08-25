@@ -1,0 +1,152 @@
+/* واجهة GovAgent المنبثقة — عربية RTL، بلا أي مكتبة خارجية. */
+
+:root {
+  --bg: #ffffff;
+  --fg: #10221c;
+  --muted: #5c6b66;
+  --border: #d8e0dd;
+  --accent: #0f6b4f;
+  --accent-fg: #ffffff;
+  --error-bg: #fdecec;
+  --error-fg: #94191b;
+  --reply-bg: #f3f7f5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+  padding: 12px 14px 16px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.field-label,
+.settings label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+textarea,
+input[type="url"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  resize: vertical;
+}
+
+textarea:focus,
+input[type="url"]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.primary-button,
+.secondary-button {
+  margin-top: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary-button {
+  width: 100%;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.secondary-button {
+  background: var(--bg);
+  color: var(--accent);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.settings {
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--reply-bg);
+}
+
+.hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.loading {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.error {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--error-bg);
+  color: var(--error-fg);
+}
+
+.reply-box {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--reply-bg);
+}
+
+.reply-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reply {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

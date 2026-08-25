@@ -15,6 +15,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_url],
+    # إضافة المتصفح (extension/) تعمل من أصل chrome-extension://<id>، ومعرّف
+    # الإضافة يتغيّر عند كل Load unpacked، لذلك يُسمح به بنمط بدل قيمة ثابتة.
+    allow_origin_regex=r"^chrome-extension://[a-p]{32}$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

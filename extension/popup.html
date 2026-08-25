@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>GovAgent</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1>GovAgent</h1>
+      <button id="settings-toggle" class="link-button" type="button">
+        الإعدادات
+      </button>
+    </header>
+
+    <section id="settings" class="settings" hidden>
+      <label for="api-base-url">رابط سيرفر الجهة (API Base URL)</label>
+      <input
+        id="api-base-url"
+        type="url"
+        dir="ltr"
+        placeholder="http://localhost:8000"
+        autocomplete="off"
+      />
+      <button id="save-settings" class="secondary-button" type="button">
+        حفظ الرابط
+      </button>
+      <p id="settings-status" class="hint" role="status"></p>
+    </section>
+
+    <main class="main">
+      <label for="message" class="field-label">رسالتك</label>
+      <textarea
+        id="message"
+        rows="4"
+        placeholder="اكتب رسالتك هنا…"
+        maxlength="8000"
+      ></textarea>
+
+      <button id="send" class="primary-button" type="button">إرسال</button>
+
+      <p id="loading" class="loading" role="status" hidden>
+        جارٍ الإرسال إلى سيرفر الجهة…
+      </p>
+
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <section id="reply-box" class="reply-box" hidden>
+        <h2 class="reply-title">رد الإيجنت</h2>
+        <p id="reply" class="reply"></p>
+        <p id="provider" class="hint"></p>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
