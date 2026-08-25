@@ -12,6 +12,9 @@ _PROVIDERS: dict[str, type[ModelProvider]] = {
     "local": LocalModelProvider,
 }
 
+#: القيم المقبولة لـMODEL_PROVIDER، تُذكر في رسالة الخطأ وفي التوثيق.
+SUPPORTED_PROVIDERS: tuple[str, ...] = tuple(sorted(_PROVIDERS))
+
 
 def get_model_provider(name: str | None = None) -> ModelProvider:
     """يعيد نسخة من المزود المطلوب.
@@ -25,7 +28,7 @@ def get_model_provider(name: str | None = None) -> ModelProvider:
     provider_name = (name or settings.model_provider or "").strip().lower()
     provider_class = _PROVIDERS.get(provider_name)
     if provider_class is None:
-        supported = ", ".join(sorted(_PROVIDERS))
+        supported = "، ".join(SUPPORTED_PROVIDERS)
         raise ModelProviderError(
             f"MODEL_PROVIDER='{provider_name}' غير مدعوم. "
             f"القيم المدعومة: {supported}."

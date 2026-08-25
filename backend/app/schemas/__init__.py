@@ -1,5 +1,19 @@
 """نماذج الطلبات والردود (Pydantic)."""
 
-from .chat import ChatRequest, ChatResponse, HealthResponse
+from .chat import (
+    ChatMessageIn,
+    ChatRequest,
+    ChatResponse,
+    ChatSource,
+    HealthResponse,
+    OracleHealth,
+)
 
-__all__ = ["ChatRequest", "ChatResponse", "HealthResponse"]
+__all__ = [
+    "ChatMessageIn",
+    "ChatRequest",
+    "ChatResponse",
+    "ChatSource",
+    "HealthResponse",
+    "OracleHealth",
+]
