@@ -28,11 +28,33 @@ from app.services.retrieval import (
     get_chunk_store,
     search_relevant_chunks,
 )
+from app.services.user_store import MemoryUserStore
 
 client = TestClient(app)
 
+#: الجهتان التجريبيتان في مخزن المستخدمين، بمعرّفيهما هناك.
 ORG_A = 1
 ORG_B = 2
+
+#: موظف من كل جهة. الجهة تصل إلى /api/chat من رمز دخوله لا من جسم الطلب،
+#: فالبحث في ملفات جهة يستلزم رمز أحد موظفيها (منذ P2-02).
+_ORG_MEMBER = {
+    ORG_A: "n.alharbi@digital-services.test",
+    ORG_B: "l.aldosari@urban-planning.test",
+}
+
+
+def as_member_of(organization_id: int) -> dict[str, str]:
+    """ترويسة رمز دخول لموظف من الجهة المطلوبة."""
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": _ORG_MEMBER[organization_id],
+            "password": settings.dev_seed_password,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 BUDGET_TEXT = (
     "تقرير الميزانية السنوية للجهة.\n\n"
@@ -50,8 +72,10 @@ MAINTENANCE_TEXT = (
 def clean_store():
     """مخزن نظيف لكل اختبار — الحالة على مستوى الصنف ولا يجوز تسربها."""
     MemoryChunkStore.clear()
+    MemoryUserStore.reset()
     yield
     MemoryChunkStore.clear()
+    MemoryUserStore.reset()
 
 
 def ingest(*, file_id: int, organization_id: int, filename: str, text: str):
@@ -192,7 +216,8 @@ def test_chat_of_one_organization_never_cites_another(monkeypatch):
 
     response = client.post(
         "/api/chat",
-        json={"message": "ما مصروفات التشغيل؟", "organization_id": ORG_B},
+        json={"message": "ما مصروفات التشغيل؟"},
+        headers=as_member_of(ORG_B),
     )
 
     assert response.status_code == 200
@@ -375,21 +400,27 @@ def test_conversation_history_and_context_travel_together(monkeypatch):
 
     monkeypatch.setattr(MockModelProvider, "generate", spy)
 
+    # السياق يأتي من المحادثة المحفوظة منذ P2-03، لا من جسم الطلب: تُرسل
+    # رسالة أولى فتُحفظ هي وردّها، ثم تُكمَّل المحادثة نفسها.
+    headers = as_member_of(ORG_A)
+    first = client.post(
+        "/api/chat", json={"message": "ما مصروفات التشغيل؟"}, headers=headers
+    )
+    assert first.status_code == 200
+
     # السؤال مكتمل بذاته عمدًا: المتجهات المحلية تعتمد على الكلمات، فلا تحل
     # الضمائر («وما بنودها؟»). المزود الحقيقي في OCI يتجاوز هذا القيد.
     response = client.post(
         "/api/chat",
         json={
             "message": "وما بنود الميزانية؟",
-            "organization_id": ORG_A,
-            "history": [
-                {"role": "user", "content": "ما مصروفات التشغيل؟"},
-                {"role": "assistant", "content": "بلغت مليون ريال."},
-            ],
+            "conversation_id": first.json()["conversation_id"],
         },
+        headers=headers,
     )
 
     assert response.status_code == 200
+    # رسالتان محفوظتان من التبادل الأول + الرسالة الحالية.
     assert len(captured["messages"]) == 3
     assert "ميزانية.txt" in captured["system_prompt"]
 
@@ -402,7 +433,8 @@ def test_sources_are_returned_with_file_name_and_chunk_index():
 
     response = client.post(
         "/api/chat",
-        json={"message": "كم بلغت مصروفات التشغيل؟", "organization_id": ORG_A},
+        json={"message": "كم بلغت مصروفات التشغيل؟"},
+        headers=as_member_of(ORG_A),
     )
 
     assert response.status_code == 200
@@ -421,7 +453,8 @@ def test_sources_are_ordered_by_score():
 
     response = client.post(
         "/api/chat",
-        json={"message": "بنود الميزانية والمصروفات", "organization_id": ORG_A},
+        json={"message": "بنود الميزانية والمصروفات"},
+        headers=as_member_of(ORG_A),
     )
 
     scores = [source["score"] for source in response.json()["sources"]]
@@ -431,7 +464,8 @@ def test_sources_are_ordered_by_score():
 def test_sources_are_empty_when_no_file_matches():
     response = client.post(
         "/api/chat",
-        json={"message": "سؤال عام", "organization_id": ORG_A},
+        json={"message": "سؤال عام"},
+        headers=as_member_of(ORG_A),
     )
     assert response.status_code == 200
     assert response.json()["sources"] == []
@@ -440,8 +474,8 @@ def test_sources_are_empty_when_no_file_matches():
 # ---------------------------------------------------------------------------
 # 6) المحادثة العادية تعمل دون ملف
 # ---------------------------------------------------------------------------
-def test_chat_without_organization_works_and_never_searches(monkeypatch):
-    """بلا جهة لا يجري أي بحث إطلاقًا."""
+def test_chat_without_a_token_works_and_never_searches(monkeypatch):
+    """بلا رمز دخول لا جهة، وبلا جهة لا يجري أي بحث إطلاقًا."""
 
     def boom(**_kwargs):
         raise AssertionError("لا يجوز البحث بلا organization_id")
@@ -460,7 +494,8 @@ def test_chat_without_organization_works_and_never_searches(monkeypatch):
 def test_chat_with_organization_but_no_files_still_answers():
     response = client.post(
         "/api/chat",
-        json={"message": "اكتب لي خطابًا رسميًا", "organization_id": ORG_A},
+        json={"message": "اكتب لي خطابًا رسميًا"},
+        headers=as_member_of(ORG_A),
     )
 
     assert response.status_code == 200
@@ -478,7 +513,8 @@ def test_chat_survives_an_unconfigured_oracle(monkeypatch):
 
     response = client.post(
         "/api/chat",
-        json={"message": "ما محتوى الملف المرفوع؟", "organization_id": ORG_A},
+        json={"message": "ما محتوى الملف المرفوع؟"},
+        headers=as_member_of(ORG_A),
     )
 
     assert response.status_code == 200
@@ -489,6 +525,7 @@ def test_chat_survives_an_unconfigured_oracle(monkeypatch):
 def test_chat_survives_an_unreachable_oracle(monkeypatch):
     """قاعدة مضبوطة لكنها لا تستجيب: لا 503 ولا انهيار."""
     monkeypatch.setattr(settings, "retrieval_provider", "oracle")
+    headers = as_member_of(ORG_A)
 
     def boom(**_kwargs):
         raise RuntimeError("ORA-12541: TNS:no listener")
@@ -496,19 +533,38 @@ def test_chat_survives_an_unreachable_oracle(monkeypatch):
     monkeypatch.setattr(documents, "search_chunks", boom)
 
     response = client.post(
-        "/api/chat",
-        json={"message": "ما محتوى الملف؟", "organization_id": ORG_A},
+        "/api/chat", json={"message": "ما محتوى الملف؟"}, headers=headers
     )
 
     assert response.status_code == 200
     assert response.json()["sources"] == []
 
 
-def test_rejected_organization_id_is_validated():
+def test_an_organization_id_in_the_body_is_ignored_entirely():
+    """الحقل حُذف من الـschema في P2-02، فإرساله لا يفتح ملفات أي جهة.
+
+    كان قبلها كافيًا لقراءة مقاطع أي جهة بلا تسجيل دخول إطلاقًا.
+    """
+    ingest(file_id=1, organization_id=ORG_A, filename="سري-أ.txt", text=BUDGET_TEXT)
+
     response = client.post(
-        "/api/chat", json={"message": "مرحبا", "organization_id": 0}
+        "/api/chat",
+        json={"message": "ما مصروفات التشغيل؟", "organization_id": ORG_A},
     )
-    assert response.status_code == 422
+
+    assert response.status_code == 200
+    assert response.json()["sources"] == []
+    assert "سري-أ.txt" not in response.text
+
+
+def test_chat_rejects_a_malformed_token():
+    """الرمز اختياري، لكن الرمز المُرسل التالف يُرفض ولا يُتجاهل بصمت."""
+    response = client.post(
+        "/api/chat",
+        json={"message": "مرحبا"},
+        headers={"Authorization": "Bearer not-a-real-token"},
+    )
+    assert response.status_code == 401
 
 
 # ---------------------------------------------------------------------------

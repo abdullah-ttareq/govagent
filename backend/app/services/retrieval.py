@@ -74,6 +74,15 @@ class ChunkStore(ABC):
         """يعيد أقرب المقاطع للسؤال داخل الجهة المحددة فقط."""
         raise NotImplementedError
 
+    @abstractmethod
+    def delete_file_chunks(self, *, file_id: int, organization_id: int) -> int:
+        """يحذف مقاطع ملف داخل جهته ويعيد عددها.
+
+        يُستدعى عند حذف الملف: مقاطع باقية بعد اختفاء سجل الملف تعني
+        محتوى يظل قابلًا للاستشهاد به من ملف لم يعد موجودًا.
+        """
+        raise NotImplementedError
+
 
 def cosine_similarity(first: Sequence[float], second: Sequence[float]) -> float:
     """تشابه جيبي بين متجهين. يعيد 0 إذا اختلفت الأبعاد أو كان أحدهما صفريًا."""
@@ -169,6 +178,15 @@ class MemoryChunkStore(ChunkStore):
         results.sort(key=lambda item: (-item.score, item.file_id, item.chunk_index))
         return results[:limit]
 
+    def delete_file_chunks(self, *, file_id: int, organization_id: int) -> int:
+        with self._lock:
+            files = MemoryChunkStore._data.get(organization_id)
+            if not files:
+                return 0
+            # الحذف من قاموس الجهة: ملف جهة أخرى غير مرئي أصلًا من هنا.
+            removed = files.pop(file_id, None)
+        return 0 if removed is None else len(removed.chunks)
+
     @classmethod
     def clear(cls) -> None:
         """يفرغ المخزن. للاختبارات ولإعادة التشغيل النظيفة."""
@@ -202,6 +220,11 @@ class OracleChunkStore(ChunkStore):
             chunks=chunks,
             embeddings=embeddings,
         )
+
+    def delete_file_chunks(self, *, file_id: int, organization_id: int) -> int:
+        from ..database.documents import delete_chunks
+
+        return delete_chunks(file_id=file_id, organization_id=organization_id)
 
     def search(
         self,

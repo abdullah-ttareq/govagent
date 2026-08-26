@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 #: أقصى عدد رسائل سابقة تُقبل كسياق في الطلب الواحد. الحد يمنع تضخّم
 #: الطلب وتجاوز حدود المودل، والواجهة مسؤولة عن إرسال الأحدث فقط.
@@ -33,15 +33,32 @@ class ChatRequest(BaseModel):
     history: list[ChatMessageIn] = Field(
         default_factory=list,
         max_length=MAX_HISTORY_MESSAGES,
-        description="رسائل المحادثة السابقة بالترتيب الزمني (اختيارية)",
+        description=(
+            "رسائل المحادثة السابقة — **للطلبات بلا رمز دخول فقط، وهو وضع "
+            "انتقالي**. مع رمز الدخول يُقرأ السياق من المحادثة المحفوظة، "
+            "وإرسال هذا الحقل حينها يُرفض بـ422. يُحذف هذا الحقل عند جعل "
+            "/api/chat محميًا بالكامل"
+        ),
     )
-    # ⚠️ مؤقت حتى مهمة BE-03: لا يوجد تسجيل دخول بعد، فتصل الجهة من العميل.
-    # بعد تفعيل JWT **يجب** أن تُقرأ من التوكن ويُحذف هذا الحقل من الطلب، وإلا
-    # أمكن لأي عميل أن يطلب مقاطع جهة أخرى. بلا قيمة هنا لا يجري أي بحث.
-    organization_id: int | None = Field(
+    # حقل organization_id كان هنا حتى P2-02، وحُذف عمدًا: كان يصل من العميل
+    # على مسار بلا مصادقة، فيستطيع أي أحد طلب مقاطع ملفات أي جهة برقم واحد.
+    # الجهة الآن تُشتق من رمز الدخول في api/chat.py. **لا تُعده.**
+    conversation_id: int | None = Field(
         None,
         gt=0,
-        description="جهة الموظف. بدونها يجيب الإيجنت من معرفته العامة بلا ملفات",
+        description=(
+            "المحادثة التي تُكمَّل. يتطلب رمز دخول، وبلا قيمة تُفتح محادثة "
+            "جديدة تلقائيًا ويُعاد معرّفها في الرد"
+        ),
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "ما نظام الإجازات في الجهة؟",
+                "conversation_id": 12,
+            }
+        }
     )
 
     @field_validator("message")
@@ -70,6 +87,31 @@ class ChatResponse(BaseModel):
     sources: list[ChatSource] = Field(
         default_factory=list,
         description="مقاطع ملفات الجهة المستخدمة في الرد، فارغة إن لم تُستخدم",
+    )
+    conversation_id: int | None = Field(
+        None,
+        description=(
+            "المحادثة التي حُفظ فيها التبادل. فارغ في الطلبات بلا رمز دخول، "
+            "فلا حفظ حينها"
+        ),
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "reply": "نظام الإجازات في الجهة ينص على…",
+                "provider": "mock",
+                "sources": [
+                    {
+                        "file_id": 4,
+                        "file_name": "لائحة-الإجازات.pdf",
+                        "chunk_index": 2,
+                        "score": 0.8134,
+                    }
+                ],
+                "conversation_id": 12,
+            }
+        }
     )
 
 

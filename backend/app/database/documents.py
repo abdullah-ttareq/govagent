@@ -125,6 +125,23 @@ def save_chunks(
     return len(rows)
 
 
+def delete_chunks(*, file_id: int, organization_id: int) -> int:
+    """يحذف مقاطع ملف **داخل جهته** ويعيد عدد الصفوف المحذوفة.
+
+    شرط الجهة جزء من عبارة الحذف نفسها: مقاطع جهة أخرى لا يمكن أن تُحذف
+    بها حتى لو مُرِّر معرّف ملف فيها.
+    """
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                _DELETE_CHUNKS,
+                {"file_id": file_id, "organization_id": organization_id},
+            )
+            removed = cursor.rowcount
+        connection.commit()
+    return removed
+
+
 def search_chunks(
     *,
     organization_id: int,

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from ..ai import ChatMessage, get_model_provider
 from ..ai.system_prompt import build_system_prompt
 from ..schemas import ChatMessageIn, ChatResponse, ChatSource
+from .model_settings_service import resolve_provider_name
 from .rag_service import retrieve_context
 
 
@@ -18,14 +19,15 @@ def send_message(
     Args:
         message: نص الرسالة الحالية.
         history: الرسائل السابقة بالترتيب الزمني، أو None لمحادثة جديدة.
-        organization_id: جهة الموظف. بدونها لا يجري أي بحث في الملفات
-            إطلاقًا، ويجيب الإيجنت من معرفته العامة.
+        organization_id: جهة الموظف، **مأخوذة من رمز الدخول** في
+            `api/chat.py` لا من جسم الطلب. بدونها لا يجري أي بحث في الملفات
+            إطلاقًا، ويجيب الإيجنت من معرفته العامة، ويُستخدم المزود
+            الافتراضي. ومعها يُستخدم مزود الجهة إن اختارت واحدًا (P2-04).
 
     مسار الملفات **اختياري بالكامل**: بلا جهة، أو بلا ملفات مرفوعة، أو مع
     قاعدة بيانات غير مضبوطة، تمضي المحادثة كما كانت قبل الـRAG تمامًا.
 
-    لاحقًا (مهام BE-05/BE-06) ستُقرأ الجهة من التوكن لا من الطلب، وسيُحفظ
-    السياق في قاعدة البيانات بدل استقباله من العميل.
+    لاحقًا (مهمة P2-03) يُحفظ السياق في قاعدة البيانات بدل استقباله من العميل.
     """
     conversation = [
         ChatMessage(role=item.role, content=item.content) for item in (history or [])
@@ -39,7 +41,8 @@ def send_message(
     )
     context = outcome.context if outcome else ""
 
-    provider = get_model_provider()
+    # مزود الجهة إن اختارت واحدًا، وإلا فـMODEL_PROVIDER (تعيد None).
+    provider = get_model_provider(resolve_provider_name(organization_id))
     result = provider.generate(
         messages=conversation,
         system_prompt=build_system_prompt(context),

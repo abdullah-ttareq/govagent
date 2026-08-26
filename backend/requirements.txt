@@ -4,6 +4,14 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.3,<3.0
 python-dotenv>=1.0,<2.0
 
+# المصادقة: تجزئة كلمات المرور وإصدار JWT.
+# bcrypt مباشرة بلا passlib — passlib غير مصانة وتتعطّل مع bcrypt 4.1+.
+bcrypt>=4.1,<6.0
+PyJWT>=2.8,<3.0
+
+# رفع الملفات: FastAPI يقرأ multipart/form-data عبرها.
+python-multipart>=0.0.9,<1.0
+
 # Oracle Database — الدرايفر بوضع thin لا يحتاج Oracle Client مثبّتًا.
 # الاتصال كسول، فوجود الحزمة لا يعني فتح أي اتصال عند الإقلاع.
 oracledb>=2.4,<4.0

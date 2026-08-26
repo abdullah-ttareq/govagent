@@ -1,7 +1,8 @@
 {
-  "_note": "بيانات تجريبية خيالية بالكامل للتطوير المحلي فقط. لا تحتوي أسماء جهات أو أشخاص حقيقيين، ولا كلمات مرور. أكمل هذا الملف في مهمة QA-01.",
+  "_note": "بيانات تجريبية خيالية بالكامل للتطوير المحلي فقط. لا تحتوي أسماء جهات أو أشخاص حقيقيين، ولا كلمات مرور. مخزن الذاكرة في backend/app/services يزرع هذه الحالات نفسها حرفيًا.",
   "organizations": [
     {
+      "_note": "اشتراك فعّال — إحدى الجهتين المستخدمتين في اختبار عزل البيانات.",
       "id": 1,
       "name": "هيئة الخدمات الرقمية",
       "slug": "digital-services",
@@ -9,7 +10,8 @@
       "subscription": {
         "status": "active",
         "seats": 10,
-        "expires_at": "2027-01-01T00:00:00"
+        "starts_at": "2025-01-01T00:00:00",
+        "expires_at": "2030-01-01T00:00:00"
       },
       "model_settings": { "provider": "mock" },
       "users": [
@@ -34,15 +36,16 @@
       ]
     },
     {
+      "_note": "اشتراك فعّال — الجهة الثانية في اختبار عزل البيانات. لا بد أن تبقى فعّالة، وإلا تعذّر إثبات العزل بين جهتين تعملان.",
       "id": 2,
       "name": "مركز التخطيط العمراني",
       "slug": "urban-planning",
       "is_active": true,
       "subscription": {
-        "_note": "اشتراك منتهٍ عمدًا — يستخدم في اختبار QA-06.",
-        "status": "expired",
+        "status": "active",
         "seats": 5,
-        "expires_at": "2025-06-30T00:00:00"
+        "starts_at": "2025-01-01T00:00:00",
+        "expires_at": "2030-01-01T00:00:00"
       },
       "model_settings": { "provider": "mock" },
       "users": [
@@ -59,10 +62,39 @@
           "is_active": true
         },
         {
+          "_note": "حساب معطّل عمدًا — يثبت أن المعطّل لا يسجّل الدخول ولا يشغل مقعدًا.",
           "email": "s.alzahrani@urban-planning.test",
           "full_name": "سلطان الزهراني",
           "role": "employee",
           "is_active": false
+        }
+      ]
+    },
+    {
+      "_note": "اشتراك منتهٍ عمدًا — الجهة المخصصة لاختبار منع الاستخدام عند انتهاء الاشتراك (QA-06). أُفردت لها جهة ثالثة حتى تبقى الجهتان الأوليان صالحتين لاختبارات العزل.",
+      "id": 3,
+      "name": "هيئة الأرشيف الوطني",
+      "slug": "national-archive",
+      "is_active": true,
+      "subscription": {
+        "status": "expired",
+        "seats": 5,
+        "starts_at": "2024-07-01T00:00:00",
+        "expires_at": "2025-06-30T00:00:00"
+      },
+      "model_settings": { "provider": "mock" },
+      "users": [
+        {
+          "email": "admin@national-archive.test",
+          "full_name": "عبدالله الغامدي",
+          "role": "admin",
+          "is_active": true
+        },
+        {
+          "email": "r.alanzi@national-archive.test",
+          "full_name": "ريم العنزي",
+          "role": "employee",
+          "is_active": true
         }
       ]
     }
