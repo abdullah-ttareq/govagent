@@ -1,23 +1,470 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-border-subtle: var(--border-subtle);
-  --color-brand: var(--brand);
-  --font-sans: var(--font-arabic);
-}
+/* ==========================================================================
+   نظام تصميم GovAgent — P3-01
+   كل لون ومسافة وحجم نص متغيّر CSS واحد، تستهلكه أدوات Tailwind ومكوّنات
+   الواجهة معًا. لا تكتب قيمة لونية صريحة في أي مكوّن؛ استخدم متغيّرًا من هنا.
+   ========================================================================== */
 
 :root {
-  --background: #f6f7f9;
-  --foreground: #16181d;
+  /* --- الألوان --------------------------------------------------------- */
+  --background: #f4f6f8;
   --surface: #ffffff;
-  --border-subtle: #e3e6ea;
+  --surface-muted: #eef1f4;
+  --foreground: #14171c;
+  --muted: #5b6572;
+  --border-subtle: #dfe4e9;
+  --border-strong: #c3ccd5;
+
   --brand: #1f6f5c;
+  --brand-strong: #185a4a;
+  --brand-soft: #e7f2ef;
+  --brand-contrast: #ffffff;
+
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --danger-border: #fbcfca;
+
+  --success: #067647;
+  --success-soft: #ecfdf3;
+
+  --warning: #b54708;
+  --warning-soft: #fffaeb;
+
+  --focus-ring: #1f6f5c66;
+
+  /* --- المسافات -------------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* --- أحجام النص ------------------------------------------------------
+     أصغر حجم ١٤px عمدًا: العربية تفقد وضوح التشكيل والنقاط تحت ذلك على
+     شاشات الجوال. */
+  --text-xs: 0.8125rem; /* 13px — للبيانات الثانوية فقط */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.375rem; /* 22px */
+  --text-2xl: 1.75rem; /* 28px */
+
+  --leading-body: 1.85; /* العربية تحتاج ارتفاع سطر أكبر من اللاتينية */
+  --leading-tight: 1.4;
+
+  /* --- الحواف والظلال --------------------------------------------------- */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(20 23 28 / 0.06);
+  --shadow-md: 0 4px 16px rgb(20 23 28 / 0.08);
+  --shadow-lg: 0 12px 32px rgb(20 23 28 / 0.12);
+
+  --control-height: 2.875rem; /* ٤٦px — هدف لمس مريح على الجوال */
+}
+
+/* جسر بين متغيّرات النظام وأدوات Tailwind: bg-surface و text-brand وغيرها. */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+
+  --font-sans: var(--font-arabic);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+html {
+  /* لا تكبير تلقائي لحجم النص عند تدوير الجوال. */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+}
+
+/* تركيز واضح بلوحة المفاتيح في كل الواجهة، ولا حلقة تركيز على نقر الفأرة. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+/* ==========================================================================
+   مكوّنات موحّدة — أزرار وحقول ورسائل
+   ========================================================================== */
+
+@layer components {
+  /* --- الأزرار --------------------------------------------------------- */
+  .gv-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding-inline: var(--space-5);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      opacity 0.15s ease;
+  }
+
+  .gv-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .gv-btn--primary {
+    background-color: var(--brand);
+    color: var(--brand-contrast);
+  }
+
+  .gv-btn--primary:hover:not(:disabled) {
+    background-color: var(--brand-strong);
+  }
+
+  .gv-btn--secondary {
+    background-color: var(--surface);
+    border-color: var(--border-strong);
+    color: var(--foreground);
+  }
+
+  .gv-btn--secondary:hover:not(:disabled) {
+    background-color: var(--surface-muted);
+  }
+
+  .gv-btn--ghost {
+    background-color: transparent;
+    color: var(--muted);
+    padding-inline: var(--space-3);
+  }
+
+  .gv-btn--ghost:hover:not(:disabled) {
+    background-color: var(--surface-muted);
+    color: var(--foreground);
+  }
+
+  .gv-btn--danger {
+    background-color: var(--danger);
+    color: #ffffff;
+  }
+
+  .gv-btn--danger:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
+
+  .gv-btn--block {
+    width: 100%;
+  }
+
+  /* --- حقول الإدخال ---------------------------------------------------- */
+  .gv-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .gv-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+  }
+
+  .gv-input {
+    width: 100%;
+    min-height: var(--control-height);
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    /* ١٦px تمنع تكبير Safari التلقائي للصفحة عند التركيز على الحقل. */
+    font-size: var(--text-base);
+    line-height: var(--leading-tight);
+    color: var(--foreground);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .gv-input:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+
+  .gv-input:disabled {
+    background-color: var(--surface-muted);
+    cursor: not-allowed;
+  }
+
+  .gv-input[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+
+  .gv-input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px rgb(180 35 24 / 0.25);
+  }
+
+  .gv-hint {
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    color: var(--muted);
+  }
+
+  .gv-error-text {
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  /* --- الرسائل --------------------------------------------------------- */
+  .gv-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+  }
+
+  .gv-alert--error {
+    background-color: var(--danger-soft);
+    border-color: var(--danger-border);
+    color: var(--danger);
+  }
+
+  .gv-alert--success {
+    background-color: var(--success-soft);
+    border-color: color-mix(in srgb, var(--success) 25%, transparent);
+    color: var(--success);
+  }
+
+  .gv-alert--warning {
+    background-color: var(--warning-soft);
+    border-color: color-mix(in srgb, var(--warning) 25%, transparent);
+    color: var(--warning);
+  }
+
+  .gv-alert--info {
+    background-color: var(--brand-soft);
+    border-color: color-mix(in srgb, var(--brand) 25%, transparent);
+    color: var(--brand-strong);
+  }
+
+  /* --- الشريط الجانبي --------------------------------------------------- */
+  .gv-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 17rem;
+    flex-shrink: 0;
+    background-color: var(--surface);
+    border-inline-end: 1px solid var(--border-subtle);
+  }
+
+  /* دون 768px: درج منزلق من جهة البداية (اليمين في RTL) فوق المحتوى. */
+  @media (width < 48rem) {
+    .gv-sidebar {
+      position: fixed;
+      inset-block: 0;
+      inset-inline-start: 0;
+      z-index: 40;
+      width: min(17rem, 85vw);
+      /* الإزاحة بالخاصية المنطقية: 100% تخرجه من جهة البداية في الاتجاهين. */
+      transform: translateX(0);
+      transition: transform 0.2s ease;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .gv-sidebar:not(.gv-sidebar--open) {
+      /* في RTL جهة البداية هي اليمين، فالخروج بقيمة موجبة. */
+      transform: translateX(100%);
+      visibility: hidden;
+    }
+
+    [dir="ltr"] .gv-sidebar:not(.gv-sidebar--open) {
+      transform: translateX(-100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gv-sidebar {
+      transition: none;
+    }
+  }
+
+  /* --- صفّ محادثة ------------------------------------------------------- */
+  .gv-conversation {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-md);
+    transition: background-color 0.15s ease;
+  }
+
+  .gv-conversation:hover {
+    background-color: var(--surface-muted);
+  }
+
+  .gv-conversation > button:first-child {
+    padding-block: var(--space-2);
+    cursor: pointer;
+  }
+
+  .gv-conversation--active {
+    background-color: var(--brand-soft);
+  }
+
+  /* شريط جانبي على حافة البداية يميّز المحادثة النشطة بغير اللون وحده. */
+  .gv-conversation--active {
+    box-shadow: inset 3px 0 0 0 var(--brand);
+  }
+
+  [dir="ltr"] .gv-conversation--active {
+    box-shadow: inset -3px 0 0 0 var(--brand);
+  }
+
+  .gv-conversation__actions {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  /* الإظهار عند المرور أو التركيز أو على المحادثة النشطة. */
+  .gv-conversation:hover .gv-conversation__actions,
+  .gv-conversation:focus-within .gv-conversation__actions,
+  .gv-conversation--active .gv-conversation__actions {
+    opacity: 1;
+  }
+
+  /* على الأجهزة اللمسية لا وجود لـhover، فالأزرار ظاهرة دائمًا. */
+  @media (hover: none) {
+    .gv-conversation__actions {
+      opacity: 1;
+    }
+  }
+
+  .gv-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* ٣٤px: هدف لمس مقبول في صفّ ضيّق. */
+    width: 2.125rem;
+    height: 2.125rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .gv-icon-btn:hover {
+    background-color: var(--surface-muted);
+    color: var(--foreground);
+  }
+
+  .gv-icon-btn--danger:hover {
+    background-color: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  /* --- النافذة الحوارية -------------------------------------------------- */
+  .gv-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    background-color: rgb(20 23 28 / 0.45);
+  }
+
+  .gv-modal {
+    width: 100%;
+    max-width: 28rem;
+    padding: var(--space-5);
+    background-color: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* --- هيكل تحميل -------------------------------------------------------- */
+  .gv-skeleton {
+    background-color: var(--surface-muted);
+    border-radius: var(--radius-md);
+    animation: gv-pulse 1.6s ease-in-out infinite;
+  }
+
+  /* --- مؤشّر انتظار ----------------------------------------------------- */
+  .gv-spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+    border-radius: var(--radius-full);
+    animation: gv-spin 0.7s linear infinite;
+  }
+}
+
+@keyframes gv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gv-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gv-spinner {
+    animation-duration: 2s;
+  }
+
+  .gv-skeleton {
+    animation: none;
+  }
 }
