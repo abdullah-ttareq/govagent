@@ -3,19 +3,19 @@
 import { useEffect, useState } from "react";
 import ConversationItem from "@/components/ConversationItem";
 import SessionFooter from "@/components/SessionFooter";
-import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ErrorNotice from "@/components/ui/ErrorNotice";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
-import { describeFailure } from "@/components/Workspace";
+import { describeFailure, type Failure } from "@/lib/errors";
 import { validateTitle, type Conversation } from "@/lib/conversations";
 
 type SidebarProps = {
   conversations: Conversation[];
   activeId: number | null;
   isLoading: boolean;
-  error: string | null;
+  failure: Failure | null;
   /** حالة الدرج على الشاشات الصغيرة. مهملة على الشاشات المتوسطة فأعلى. */
   isOpen: boolean;
   onClose: () => void;
@@ -30,7 +30,7 @@ export default function Sidebar({
   conversations,
   activeId,
   isLoading,
-  error,
+  failure,
   isOpen,
   onClose,
   onSelect,
@@ -148,13 +148,8 @@ export default function Sidebar({
                 <li key={index} className="gv-skeleton h-14" />
               ))}
             </ul>
-          ) : error ? (
-            <div className="space-y-3">
-              <Alert tone="error">{error}</Alert>
-              <Button variant="secondary" block onClick={onRetry}>
-                إعادة المحاولة
-              </Button>
-            </div>
+          ) : failure ? (
+            <ErrorNotice failure={failure} onRetry={onRetry} />
           ) : conversations.length === 0 ? (
             <p className="rounded-md border border-dashed border-border-strong p-4 text-center text-xs leading-relaxed text-muted">
               لا توجد محادثات بعد.

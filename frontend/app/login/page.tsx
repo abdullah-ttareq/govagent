@@ -1,35 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
+import ErrorNotice from "@/components/ui/ErrorNotice";
 import Input from "@/components/ui/Input";
-import { ApiError, NetworkError } from "@/lib/api";
 import { validateEmail, validatePassword } from "@/lib/auth";
-
-/** يترجم فشل الدخول إلى رسالة عربية واحدة واضحة. */
-function describeLoginFailure(caught: unknown): string {
-  if (caught instanceof NetworkError) return caught.message;
-
-  if (caught instanceof ApiError) {
-    // 401 و 403 و 409 يكتب الـBackend رسائلها العربية بنفسه، وفيها ما لا
-    // تعرفه الواجهة (تاريخ انتهاء الاشتراك مثلًا)، فتُعرض كما وردت.
-    if (caught.status === 401 || caught.status === 403 || caught.status === 409) {
-      return caught.message;
-    }
-    if (caught.status === 422) {
-      return "البيانات المُدخَلة غير مقبولة. راجع البريد وكلمة المرور.";
-    }
-    if (caught.status >= 500) {
-      return "الخدمة غير متاحة حاليًا. حاول بعد قليل، وإن تكرر فراجع مسؤول النظام في جهتك.";
-    }
-    return caught.message;
-  }
-
-  return "تعذّر تسجيل الدخول. حاول مرة أخرى.";
-}
+import { describeFailureDetail, type Failure } from "@/lib/errors";
 
 export default function LoginPage() {
   const { status, signIn } = useAuth();
@@ -39,7 +18,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // من له جلسة قائمة لا يرى صفحة الدخول.
@@ -55,7 +34,7 @@ export default function LoginPage() {
     const nextPasswordError = validatePassword(password);
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
-    setFormError(null);
+    setFailure(null);
 
     if (nextEmailError || nextPasswordError) return;
 
@@ -64,7 +43,7 @@ export default function LoginPage() {
       await signIn(email.trim(), password);
       router.replace("/");
     } catch (caught) {
-      setFormError(describeLoginFailure(caught));
+      setFailure(describeFailureDetail(caught, "تعذّر تسجيل الدخول. حاول مرة أخرى."));
       setIsSubmitting(false);
     }
     // لا إعادة تعيين عند النجاح: الصفحة تُستبدل، وإطفاء المؤشّر قبلها يومض.
@@ -120,7 +99,7 @@ export default function LoginPage() {
               }}
             />
 
-            {formError && <Alert tone="error">{formError}</Alert>}
+            {failure && <ErrorNotice failure={failure} />}
 
             <Button
               type="submit"
@@ -133,8 +112,14 @@ export default function LoginPage() {
           </form>
         </section>
 
-        <p className="mt-5 text-center text-xs text-muted">
+        <p className="mt-5 text-center text-xs leading-relaxed text-muted">
           نسيت كلمة المرور؟ راجع مسؤول النظام في جهتك لإعادة تعيينها.
+        </p>
+
+        <p className="mt-2 text-center text-xs">
+          <Link href="/settings" className="font-semibold text-brand hover:underline">
+            ضبط رابط سيرفر الجهة
+          </Link>
         </p>
       </div>
     </main>

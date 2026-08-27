@@ -408,6 +408,66 @@ body {
     color: var(--danger);
   }
 
+  .gv-icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  /* بارتفاع حقل الإدخال، ليستوي معه في صفّ الكتابة. */
+  .gv-icon-btn--lg {
+    width: var(--control-height);
+    height: var(--control-height);
+    border: 1px solid var(--border-strong);
+  }
+
+  /* --- المرفقات ---------------------------------------------------------- */
+  .gv-attachment {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .gv-progress {
+    block-size: 0.375rem;
+    background-color: var(--border-subtle);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+
+  .gv-progress__bar {
+    block-size: 100%;
+    background-color: var(--brand);
+    border-radius: var(--radius-full);
+    transition: inline-size 0.2s ease;
+  }
+
+  /* --- منطقة الإفلات ------------------------------------------------------ */
+  .gv-dropzone {
+    position: absolute;
+    inset: var(--space-3);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* مؤشّر بصري لا هدف إفلات: مستقبِل الإفلات هو اللوحة كلها، فلو ابتلع
+       هذا الغطاء الحدث لفشل الإفلات على حوافها. */
+    pointer-events: none;
+    background-color: color-mix(in srgb, var(--brand-soft) 92%, transparent);
+    border: 2px dashed var(--brand);
+    border-radius: var(--radius-lg);
+  }
+
+  .gv-dropzone__label {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--brand-strong);
+    text-align: center;
+  }
+
   /* --- النافذة الحوارية -------------------------------------------------- */
   .gv-modal-backdrop {
     position: fixed;

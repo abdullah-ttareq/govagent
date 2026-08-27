@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import ChatPanel from "@/components/ChatPanel";
 import Sidebar from "@/components/Sidebar";
-import { ApiError, NetworkError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import {
   createConversation,
   deleteConversation,
@@ -12,18 +12,7 @@ import {
   renameConversation,
   type Conversation,
 } from "@/lib/conversations";
-
-/** يترجم أي فشل إلى رسالة عربية واحدة صالحة للعرض. */
-export function describeFailure(caught: unknown, fallback: string): string {
-  if (caught instanceof NetworkError) return caught.message;
-  if (caught instanceof ApiError) {
-    if (caught.status === 401) return "انتهت جلستك. سجّل الدخول من جديد.";
-    if (caught.status === 404) return "المحادثة لم تعد موجودة. حُدِّثت القائمة.";
-    if (caught.status >= 500) return "الخدمة غير متاحة حاليًا. حاول بعد قليل.";
-    return caught.message;
-  }
-  return fallback;
-}
+import { describeFailureDetail, type Failure } from "@/lib/errors";
 
 /**
  * مالك حالة مساحة العمل: قائمة المحادثات والمحادثة النشطة.
@@ -38,7 +27,7 @@ export default function Workspace() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
-  const [listError, setListError] = useState<string | null>(null);
+  const [listFailure, setListFailure] = useState<Failure | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   /** جلسة انتهت أثناء العمل: تُنهى محليًا فيحوّل RequireAuth إلى /login. */
@@ -55,10 +44,10 @@ export default function Workspace() {
       try {
         const result = await listConversations(token, signal);
         setConversations(result.conversations);
-        setListError(null);
+        setListFailure(null);
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
-        setListError(describeFailure(caught, "تعذّر تحميل المحادثات."));
+        setListFailure(describeFailureDetail(caught, "تعذّر تحميل المحادثات."));
         handleExpiredSession(caught);
       } finally {
         setIsLoadingList(false);
@@ -96,10 +85,10 @@ export default function Workspace() {
       const conversation = await createConversation(token);
       setConversations((current) => [conversation, ...current]);
       setActiveId(conversation.id);
-      setListError(null);
+      setListFailure(null);
       setIsSidebarOpen(false);
     } catch (caught) {
-      setListError(describeFailure(caught, "تعذّر إنشاء المحادثة."));
+      setListFailure(describeFailureDetail(caught, "تعذّر إنشاء المحادثة."));
       handleExpiredSession(caught);
     }
   }, [token, handleExpiredSession]);
@@ -132,7 +121,7 @@ export default function Workspace() {
         conversations={conversations}
         activeId={activeId}
         isLoading={isLoadingList}
-        error={listError}
+        failure={listFailure}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onSelect={(id) => {

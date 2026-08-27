@@ -1,15 +1,16 @@
 /**
  * عميل بسيط للاتصال بـGovAgent Backend.
- * رابط السيرفر يأتي من NEXT_PUBLIC_BACKEND_URL، وسيصبح قابلًا للتعديل من
- * صفحة الإعدادات في مهمة P3-03.
+ *
+ * رابط السيرفر يُقرأ من `lib/server-url.ts` **عند كل طلب** لا مرة واحدة عند
+ * تحميل الوحدة: الموظف قد يغيّره من صفحة الإعدادات أثناء الجلسة، وقيمة
+ * مُثبَّتة في ثابت وحدة تبقى القديمة حتى تحديث الصفحة.
  */
 
-export const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+import { getServerUrl } from "@/lib/server-url";
 
 /** رسالة موحّدة لانقطاع الشبكة أو توقّف السيرفر. */
 export const OFFLINE_MESSAGE =
-  "تعذّر الاتصال بسيرفر الجهة. تأكد من تشغيل الـBackend ومن صحة رابط السيرفر.";
+  "تعذّر الاتصال بسيرفر جهتك. تأكد من تشغيل السيرفر ومن صحة رابطه في الإعدادات.";
 
 /**
  * غلاف الخطأ الموحّد الذي يعيده الـBackend من `api/errors.py`:
@@ -67,7 +68,7 @@ export async function apiRequest<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${BACKEND_URL}${path}`, {
+    response = await fetch(`${getServerUrl()}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

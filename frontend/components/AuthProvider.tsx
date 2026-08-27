@@ -24,8 +24,12 @@ import {
  * `checking` هي الحالة الابتدائية دائمًا: الرمز في `localStorage` لا يُقرأ إلا
  * في المتصفح، والصفحة تُصيَّر على السيرفر أولًا. لولا هذه الحالة لومض المستخدم
  * المسجَّل على صفحة الدخول عند كل تحديث.
+ *
+ * `offline` حالة قائمة بذاتها لا نوع من `unauthenticated`: رمز محفوظ تعذّر
+ * التحقق منه لأن السيرفر لم يردّ. طرد الموظف إلى صفحة الدخول حينها خطأ صامت
+ * — الجلسة قد تكون سليمة تمامًا، والمشكلة في الرابط أو في السيرفر.
  */
-type AuthStatus = "checking" | "authenticated" | "unauthenticated";
+type AuthStatus = "checking" | "authenticated" | "unauthenticated" | "offline";
 
 type AuthContextValue = {
   status: AuthStatus;
@@ -33,6 +37,8 @@ type AuthContextValue = {
   token: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** يعيد محاولة التحقق من الرمز المحفوظ — بعد إصلاح الرابط أو تشغيل السيرفر. */
+  retrySession: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -49,6 +55,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("checking");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  /** زيادته تعيد تشغيل أثر التحقق. */
+  const [attempt, setAttempt] = useState(0);
 
   // عند فتح التطبيق: رمز محفوظ لا يكفي — قد يكون منتهيًا أو لحساب عُطّل.
   // نتحقق منه بـ/api/auth/me قبل اعتبار الجلسة قائمة.
@@ -74,16 +82,29 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       .catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
 
-        // 401 أو 403 يعني رمزًا لم يعد صالحًا، فيُحذف.
-        // انقطاع الشبكة لا يُحذف عنده الرمز: السيرفر متوقف لا الجلسة منتهية،
-        // وحذفه يجبر المستخدم على دخول جديد لن ينجح أصلًا.
-        if (caught instanceof ApiError) clearStoredToken();
+        // 401 أو 403 يعني رمزًا لم يعد صالحًا، فيُحذف ويعود المستخدم للدخول.
+        if (caught instanceof ApiError) {
+          clearStoredToken();
+          setToken(null);
+          setUser(null);
+          setStatus("unauthenticated");
+          return;
+        }
+
+        // انقطاع الاتصال: الرمز يبقى محفوظًا والحالة `offline`. حذفه هنا
+        // يجبر الموظف على دخول جديد لن ينجح أصلًا ما دام السيرفر بعيدًا،
+        // والطرد الصامت إلى صفحة الدخول يخفي السبب الحقيقي.
         setToken(null);
         setUser(null);
-        setStatus("unauthenticated");
+        setStatus("offline");
       });
 
     return () => controller.abort();
+  }, [attempt]);
+
+  const retrySession = useCallback(() => {
+    setStatus("checking");
+    setAttempt((current) => current + 1);
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -114,8 +135,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, token, signIn, signOut }),
-    [status, user, token, signIn, signOut],
+    () => ({ status, user, token, signIn, signOut, retrySession }),
+    [status, user, token, signIn, signOut, retrySession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
