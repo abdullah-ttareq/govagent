@@ -468,6 +468,67 @@ body {
     text-align: center;
   }
 
+  /* --- الجداول ----------------------------------------------------------- */
+  /* الجدول يمرَّر داخل غلافه وحده، فلا تمرير أفقي للصفحة على الجوال. */
+  .gv-table-wrap {
+    overflow-x: auto;
+    /* في RTL وحده يتسرّب فائض عرض الجدول إلى تمرير الصفحة رغم
+       `overflow-x: auto`: الفائض يمتد يسارًا، فيرفع `scrollWidth` للمستند.
+       `contain: paint` يقصر الرسم على هذا الصندوق فينقطع التسريب.
+       مقيس على عرض ٣٦٠ بكسل: ٤٧٨ ← ٣٦٠. */
+    contain: paint;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .gv-table {
+    width: 100%;
+    min-width: 34rem;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  .gv-table th,
+  .gv-table td {
+    padding: var(--space-3) var(--space-4);
+    /* text-start لا text-right: يتبع اتجاه المستند. */
+    text-align: start;
+    vertical-align: middle;
+  }
+
+  .gv-table thead th {
+    background-color: var(--surface-muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .gv-table tbody tr + tr {
+    border-block-start: 1px solid var(--border-subtle);
+  }
+
+  /* --- الشارات ----------------------------------------------------------- */
+  .gv-badge {
+    display: inline-block;
+    padding: 0.125rem var(--space-3);
+    background-color: var(--surface-muted);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .gv-badge--ok {
+    background-color: var(--success-soft);
+    color: var(--success);
+  }
+
+  .gv-badge--off {
+    background-color: var(--surface-muted);
+    color: var(--muted);
+  }
+
   /* --- النافذة الحوارية -------------------------------------------------- */
   .gv-modal-backdrop {
     position: fixed;

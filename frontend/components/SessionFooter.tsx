@@ -26,7 +26,18 @@ export default function SessionFooter() {
         {user.role === "admin" && " · مسؤول الجهة"}
       </p>
 
-      <div className="mt-3 flex gap-2">
+      {/* رابط اللوحة لمسؤول الجهة وحده. إخفاؤه راحة عرض لا حماية:
+          مسارات اللوحة كلها تفرض الدور في السيرفر. */}
+      {user.role === "admin" && (
+        <Link
+          href="/admin"
+          className="gv-btn gv-btn--secondary mt-3 w-full"
+        >
+          لوحة الإدارة
+        </Link>
+      )}
+
+      <div className="mt-2 flex gap-2">
         <Button
           variant="secondary"
           className="flex-1"
