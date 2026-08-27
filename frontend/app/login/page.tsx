@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import Input from "@/components/ui/Input";
@@ -11,7 +12,7 @@ import { validateEmail, validatePassword } from "@/lib/auth";
 import { describeFailureDetail, type Failure } from "@/lib/errors";
 
 export default function LoginPage() {
-  const { status, signIn } = useAuth();
+  const { status, signIn, sessionNotice, clearSessionNotice } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -35,6 +36,7 @@ export default function LoginPage() {
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
     setFailure(null);
+    clearSessionNotice();
 
     if (nextEmailError || nextPasswordError) return;
 
@@ -98,6 +100,11 @@ export default function LoginPage() {
                 if (passwordError) setPasswordError(null);
               }}
             />
+
+            {/* سبب الخروج غير الإرادي، قبل أي خطأ دخول جديد. */}
+            {sessionNotice && !failure && (
+              <Alert tone="warning">{sessionNotice}</Alert>
+            )}
 
             {failure && <ErrorNotice failure={failure} />}
 

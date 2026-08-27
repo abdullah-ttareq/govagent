@@ -37,9 +37,20 @@ type AuthContextValue = {
   token: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * إنهاء جلسة بسبب رمز لم يعد صالحًا (401)، مع رسالة تُعرض في صفحة الدخول.
+   * تختلف عن `signOut` في أنها ليست فعل الموظف، فيستحق أن يعرف لماذا خرج.
+   */
+  endExpiredSession: () => void;
+  /** سبب انتهاء الجلسة، لتعرضه صفحة الدخول مرة واحدة. */
+  sessionNotice: string | null;
+  clearSessionNotice: () => void;
   /** يعيد محاولة التحقق من الرمز المحفوظ — بعد إصلاح الرابط أو تشغيل السيرفر. */
   retrySession: () => void;
 };
+
+const EXPIRED_NOTICE =
+  "انتهت جلستك لطول المدة أو لتغيّر في حسابك. سجّل الدخول من جديد للمتابعة.";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -57,6 +68,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   /** زيادته تعيد تشغيل أثر التحقق. */
   const [attempt, setAttempt] = useState(0);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
   // عند فتح التطبيق: رمز محفوظ لا يكفي — قد يكون منتهيًا أو لحساب عُطّل.
   // نتحقق منه بـ/api/auth/me قبل اعتبار الجلسة قائمة.
@@ -82,11 +94,14 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       .catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
 
-        // 401 أو 403 يعني رمزًا لم يعد صالحًا، فيُحذف ويعود المستخدم للدخول.
+        // 401 أو 403 يعني رمزًا لم يعد صالحًا، فيُحذف ويعود المستخدم للدخول
+        // **مع رسالة**: الموظف فتح التطبيق وهو يظنّ نفسه مسجَّلًا، فوصوله إلى
+        // صفحة الدخول بلا تفسير يبدو عطلًا.
         if (caught instanceof ApiError) {
           clearStoredToken();
           setToken(null);
           setUser(null);
+          setSessionNotice(EXPIRED_NOTICE);
           setStatus("unauthenticated");
           return;
         }
@@ -109,6 +124,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await loginRequest(email, password);
+    setSessionNotice(null);
     storeToken(session.access_token);
     setToken(session.access_token);
     setUser(session.user);
@@ -117,6 +133,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const current = token;
+    // خروج بإرادة الموظف: لا رسالة تفسير على صفحة الدخول.
+    setSessionNotice(null);
 
     // الحالة المحلية تُمسح أولًا: الرمز موقّع وبلا حالة على السيرفر
     // (انظر شرح logout في backend/app/api/auth.py)، فنداء الخروج إشعار لا
@@ -134,9 +152,43 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
+  /**
+   * الرمز لم يعد مقبولًا. يُمسح محليًا بلا نداء `logout` — السيرفر رفضه
+   * أصلًا، ونداء محمي برمز مرفوض سيُرفض هو الآخر.
+   */
+  const endExpiredSession = useCallback(() => {
+    clearStoredToken();
+    setToken(null);
+    setUser(null);
+    setSessionNotice(EXPIRED_NOTICE);
+    setStatus("unauthenticated");
+  }, []);
+
+  const clearSessionNotice = useCallback(() => setSessionNotice(null), []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, token, signIn, signOut, retrySession }),
-    [status, user, token, signIn, signOut, retrySession],
+    () => ({
+      status,
+      user,
+      token,
+      signIn,
+      signOut,
+      endExpiredSession,
+      sessionNotice,
+      clearSessionNotice,
+      retrySession,
+    }),
+    [
+      status,
+      user,
+      token,
+      signIn,
+      signOut,
+      endExpiredSession,
+      sessionNotice,
+      clearSessionNotice,
+      retrySession,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

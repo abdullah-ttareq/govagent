@@ -19,6 +19,7 @@ import {
   validateNewPassword,
   type DirectoryUser,
 } from "@/lib/admin";
+import { ApiError } from "@/lib/api";
 import { validateEmail, type UserRole } from "@/lib/auth";
 import { describeFailure, describeFailureDetail, type Failure } from "@/lib/errors";
 
@@ -42,7 +43,7 @@ export default function UsersSection({
   /** يُستدعى بعد كل تغيّر يمسّ المقاعد، لتحديث بطاقة الاشتراك. */
   onDirectoryChanged: () => void;
 }) {
-  const { token, user: currentUser } = useAuth();
+  const { token, user: currentUser, endExpiredSession } = useAuth();
 
   const [users, setUsers] = useState<DirectoryUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,6 +63,14 @@ export default function UsersSection({
   const [disableError, setDisableError] = useState<string | null>(null);
   const [isDisabling, setIsDisabling] = useState(false);
 
+  /** رمز لم يعد صالحًا: تُنهى الجلسة فيحوّل `RequireAuth` إلى `/login`. */
+  const expireIfUnauthorized = useCallback(
+    (caught: unknown) => {
+      if (caught instanceof ApiError && caught.status === 401) endExpiredSession();
+    },
+    [endExpiredSession],
+  );
+
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       if (!token) return;
@@ -72,11 +81,12 @@ export default function UsersSection({
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
         setFailure(describeFailureDetail(caught, "تعذّر تحميل قائمة الموظفين."));
+        expireIfUnauthorized(caught);
       } finally {
         setIsLoading(false);
       }
     },
-    [token],
+    [token, expireIfUnauthorized],
   );
 
   useEffect(() => {
@@ -126,6 +136,7 @@ export default function UsersSection({
       // 409 هنا حالتان: بريد مكرر، أو مقاعد مستنفدة. رسالة الـBackend
       // تفرّق بينهما بنصّها، فتُعرض كما وردت.
       setAddError(describeFailure(caught, "تعذّرت إضافة الموظف."));
+      expireIfUnauthorized(caught);
     } finally {
       setIsAdding(false);
     }
@@ -139,6 +150,7 @@ export default function UsersSection({
       replaceUser(await updateUser(token, target.id, { role }));
     } catch (caught) {
       setActionError(describeFailure(caught, "تعذّر تغيير دور الموظف."));
+      expireIfUnauthorized(caught);
     } finally {
       setBusyId(null);
     }
@@ -163,6 +175,7 @@ export default function UsersSection({
           isActive ? "تعذّر إعادة تفعيل الحساب." : "تعذّر تعطيل الحساب.",
         ),
       );
+      expireIfUnauthorized(caught);
     } finally {
       setBusyId(null);
     }
@@ -178,6 +191,7 @@ export default function UsersSection({
       onDirectoryChanged();
     } catch (caught) {
       setDisableError(describeFailure(caught, "تعذّر تعطيل الحساب."));
+      expireIfUnauthorized(caught);
     } finally {
       setIsDisabling(false);
     }

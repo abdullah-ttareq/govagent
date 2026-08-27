@@ -22,7 +22,7 @@ import { describeFailureDetail, type Failure } from "@/lib/errors";
  * الشريط يفرّغ لوحة الشات.
  */
 export default function Workspace() {
-  const { token, signOut } = useAuth();
+  const { token, endExpiredSession } = useAuth();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -33,9 +33,9 @@ export default function Workspace() {
   /** جلسة انتهت أثناء العمل: تُنهى محليًا فيحوّل RequireAuth إلى /login. */
   const handleExpiredSession = useCallback(
     (caught: unknown) => {
-      if (caught instanceof ApiError && caught.status === 401) void signOut();
+      if (caught instanceof ApiError && caught.status === 401) endExpiredSession();
     },
-    [signOut],
+    [endExpiredSession],
   );
 
   const refresh = useCallback(

@@ -5,6 +5,7 @@ import { useAuth } from "@/components/AuthProvider";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorNotice from "@/components/ui/ErrorNotice";
+import { ApiError } from "@/lib/api";
 import type { DirectoryUser } from "@/lib/admin";
 import {
   ACTION_LABELS,
@@ -18,7 +19,7 @@ import {
 import { describeFailureDetail, type Failure } from "@/lib/errors";
 
 export default function AuditSection({ users }: { users: DirectoryUser[] }) {
-  const { token } = useAuth();
+  const { token, endExpiredSession } = useAuth();
 
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [total, setTotal] = useState(0);
@@ -55,11 +56,12 @@ export default function AuditSection({ users }: { users: DirectoryUser[] }) {
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
         setFailure(describeFailureDetail(caught, "تعذّر تحميل سجل التدقيق."));
+        if (caught instanceof ApiError && caught.status === 401) endExpiredSession();
       } finally {
         setIsLoading(false);
       }
     },
-    [token, action, userId],
+    [token, action, userId, endExpiredSession],
   );
 
   // تغيير التصفية يعيد الترقيم إلى أوله: الصفحة الخامسة من نتيجة قديمة

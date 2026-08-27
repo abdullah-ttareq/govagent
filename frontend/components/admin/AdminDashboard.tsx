@@ -6,6 +6,7 @@ import { useAuth } from "@/components/AuthProvider";
 import AuditSection from "@/components/admin/AuditSection";
 import SubscriptionCard from "@/components/admin/SubscriptionCard";
 import UsersSection from "@/components/admin/UsersSection";
+import { ApiError } from "@/lib/api";
 import {
   getSubscription,
   listUsers,
@@ -40,7 +41,7 @@ function Section({
  * لصفحة واحدة.
  */
 export default function AdminDashboard() {
-  const { token, user } = useAuth();
+  const { token, user, endExpiredSession } = useAuth();
 
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
@@ -61,11 +62,12 @@ export default function AdminDashboard() {
         setSubscriptionFailure(
           describeFailureDetail(caught, "تعذّر تحميل بيانات الاشتراك."),
         );
+        if (caught instanceof ApiError && caught.status === 401) endExpiredSession();
       } finally {
         setIsLoadingSubscription(false);
       }
     },
-    [token, organizationId],
+    [token, organizationId, endExpiredSession],
   );
 
   const loadUsers = useCallback(

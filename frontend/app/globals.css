@@ -13,8 +13,12 @@
   --surface-muted: #eef1f4;
   --foreground: #14171c;
   --muted: #5b6572;
+  /* `border-subtle` فاصل زخرفي بين مساحات، فلا حدّ تباين عليه.
+     `border-strong` حدّ عناصر التحكم (حقول وأزرار ثانوية)، وهو حدّ عنصر
+     واجهة يلزمه ٣:١ في WCAG 1.4.11. القيمة السابقة #c3ccd5 كانت 1.63 على
+     الأبيض؛ هذه 3.56 على الأبيض و3.29 على الخلفية. */
   --border-subtle: #dfe4e9;
-  --border-strong: #c3ccd5;
+  --border-strong: #7d8996;
 
   --brand: #1f6f5c;
   --brand-strong: #185a4a;

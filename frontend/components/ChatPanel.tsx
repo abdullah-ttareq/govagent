@@ -33,7 +33,7 @@ export default function ChatPanel({
   onMessageSent,
   onOpenSidebar,
 }: ChatPanelProps) {
-  const { token, signOut } = useAuth();
+  const { token, endExpiredSession } = useAuth();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -55,9 +55,9 @@ export default function ChatPanel({
 
   const handleExpiredSession = useCallback(
     (caught: unknown) => {
-      if (caught instanceof ApiError && caught.status === 401) void signOut();
+      if (caught instanceof ApiError && caught.status === 401) endExpiredSession();
     },
-    [signOut],
+    [endExpiredSession],
   );
 
   const loadHistory = useCallback(
