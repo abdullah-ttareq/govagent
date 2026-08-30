@@ -104,7 +104,7 @@ export default function Sidebar({
       {/* خلفية الدرج على الجوال وحده. */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          className="gv-scrim z-30 md:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -114,16 +114,23 @@ export default function Sidebar({
         className={`gv-sidebar ${isOpen ? "gv-sidebar--open" : ""}`}
         aria-label="المحادثات"
       >
-        <div className="flex items-start justify-between gap-2 border-b border-border-subtle p-4">
-          <div className="min-w-0">
-            <p className="text-lg font-bold text-brand">GovAgent</p>
-            <p className="mt-1 text-xs text-muted">المساعد الذكي للموظف</p>
+        <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
+          <div className="gv-brand">
+            <span className="gv-brand__mark" aria-hidden="true">
+              G
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-base font-bold leading-tight text-brand">
+                GovMind
+              </p>
+              <p className="truncate text-xs text-muted">المساعد الذكي لمنسوبي الجهة</p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="gv-icon-btn md:hidden"
+            className="gv-icon-btn shrink-0 md:hidden"
             aria-label="إغلاق قائمة المحادثات"
           >
             <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5">
@@ -135,11 +142,19 @@ export default function Sidebar({
           </button>
         </div>
 
-        <div className="p-3">
+        <div className="px-3 pt-3">
           <Button block onClick={onCreate}>
-            + محادثة جديدة
+            <svg viewBox="0 0 20 20" aria-hidden="true" className="size-4">
+              <path
+                fill="currentColor"
+                d="M10 3.25a.75.75 0 0 1 .75.75v5.25H16a.75.75 0 0 1 0 1.5h-5.25V16a.75.75 0 0 1-1.5 0v-5.25H4a.75.75 0 0 1 0-1.5h5.25V4a.75.75 0 0 1 .75-.75"
+              />
+            </svg>
+            محادثة جديدة
           </Button>
         </div>
+
+        <p className="gv-section-label mt-4 mb-2 px-4">المحادثات</p>
 
         <nav className="flex-1 overflow-y-auto px-3 pb-3">
           {isLoading ? (
@@ -151,13 +166,13 @@ export default function Sidebar({
           ) : failure ? (
             <ErrorNotice failure={failure} onRetry={onRetry} />
           ) : conversations.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border-strong p-4 text-center text-xs leading-relaxed text-muted">
+            <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted">
               لا توجد محادثات بعد.
               <br />
-              ابدأ محادثة جديدة أو اكتب رسالتك مباشرة.
+              اكتب رسالتك وستُحفظ المحادثة تلقائيًا.
             </p>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-1.5">
               {conversations.map((conversation) => (
                 <ConversationItem
                   key={conversation.id}

@@ -259,7 +259,7 @@ export default function UsersSection({
                   <tr key={item.id}>
                     <td>
                       <span className="block font-semibold">{item.full_name}</span>
-                      <span className="block text-xs text-muted" dir="ltr">
+                      <span className="gv-ltr-text block text-xs text-muted">
                         {item.email}
                       </span>
                     </td>

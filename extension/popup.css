@@ -1,15 +1,57 @@
-/* واجهة GovAgent المنبثقة — عربية RTL، بلا أي مكتبة خارجية. */
+/* واجهة GovMind المنبثقة — عربية RTL، بلا أي مكتبة خارجية.
+
+   **الارتفاع ثابت عمدًا:** نافذة الإضافة تتمدد مع محتواها افتراضيًا، فتقفز
+   مع كل رسالة جديدة ومع فتح الإعدادات. هنا الجسم بارتفاع واحد، والمنطقة
+   الوحيدة التي تتمرّر هي سجل المحادثة. */
 
 :root {
+  color-scheme: light;
+
+  /* محايد أولًا — مطابق لمتغيّرات الواجهة في frontend/app/globals.css.
+     لا أخضر ولا أزرق واسع؛ الإبراز هادئ ومحدود، والدلالي محجوز لمعناه. */
   --bg: #ffffff;
-  --fg: #10221c;
-  --muted: #5c6b66;
-  --border: #d8e0dd;
-  --accent: #0f6b4f;
-  --accent-fg: #ffffff;
-  --error-bg: #fdecec;
-  --error-fg: #94191b;
-  --reply-bg: #f3f7f5;
+  --fg: #1f2023;
+  --muted: #6b6e76;
+  --border: #e4e4e7;
+  --accent: #4a6fa5;
+  /* الفعل الأساسي فحميّ في الوضع الفاتح. */
+  --action: #26272b;
+  --action-fg: #ffffff;
+  --error-bg: #fef3f2;
+  --error-fg: #b42318;
+  --error-border: #fbcfca;
+  --notice-bg: #f0f0f2;
+  --surface: #f3f3f5;
+  --user-bubble: #f0f0f2;
+  --user-bubble-fg: #1f2023;
+  /* خلفية ما حول الحاوية عند الفتح في تبويب كامل. */
+  --page-bg: #f7f7f8;
+  --container-shadow: 0 0 40px rgb(24 25 28 / 0.07);
+}
+
+/* ------------------------------------------------------------ الوضع الداكن
+
+   فحميّ محايد لا أسود صريح، بالمنطق نفسه المتّبع في الواجهة. والفعل
+   الأساسي ينقلب: سطح فاتح بنصّ فحميّ. */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #232427;
+  --fg: #ececee;
+  --muted: #a1a3aa;
+  --border: #34353a;
+  --accent: #8fb0e0;
+  --action: #ececee;
+  --action-fg: #1a1b1e;
+  --error-bg: #2b1613;
+  --error-fg: #ff9086;
+  --error-border: #5c2b25;
+  --notice-bg: #2c2d31;
+  --surface: #2c2d31;
+  --user-bubble: #2c2d31;
+  --user-bubble-fg: #ececee;
+  --page-bg: #1a1b1e;
+  --container-shadow: 0 0 40px rgb(0 0 0 / 0.4);
 }
 
 * {
@@ -17,9 +59,15 @@
 }
 
 body {
-  width: 360px;
-  margin: 0;
-  padding: 12px 14px 16px;
+  /* عرض وارتفاع ثابتان: 560 أقل من سقف نوافذ الإضافات (600). */
+  width: 380px;
+  height: 560px;
+  /* `auto` جانبيًا يوسّط الجسم عند فتح الصفحة في تبويب كامل. لا أثر له في
+     النافذة المنبثقة لأن عرضها يساوي عرض الجسم تمامًا. */
+  margin: 0 auto;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
   font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
@@ -27,22 +75,171 @@ body {
   line-height: 1.7;
 }
 
+/* ------------------------------------------------------- فتحٌ في تبويب كامل
+
+   النافذة المنبثقة عرضها = عرض الجسم، فهذا الاستعلام لا يتحقق فيها إطلاقًا.
+   أما في تبويب كامل فعرض النافذة أكبر بكثير، فكان الجسم يلتصق بحافة البداية
+   (اليمين في RTL) ويترك فراغًا أبيض شاسعًا. هنا يصير حاوية متوسطة بالمنتصف
+   تملأ الارتفاع. */
+@media (min-width: 480px) {
+  html {
+    block-size: 100%;
+    background: var(--page-bg);
+  }
+
+  body {
+    inline-size: min(640px, 100% - 32px);
+    block-size: 100vh;
+    padding-inline: 20px;
+    border-inline: 1px solid var(--border);
+    box-shadow: var(--container-shadow);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ الرأس */
+
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  flex: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand img {
+  display: block;
+  border-radius: 4px;
 }
 
 .header h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* --------------------------------------------------------- مبدّل المظهر
+
+   زرّ أيقونة صغير يفتح قائمة — النافذة ٣٨٠px، وثلاثة أزرار ظاهرة تزاحم
+   «محادثة جديدة» و«الإعدادات» في الرأس نفسه. */
+
+.theme {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 26px;
+  block-size: 24px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.theme__trigger:hover {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.theme__trigger[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--notice-bg);
+}
+
+.theme__trigger svg {
+  display: block;
+  inline-size: 14px;
+  block-size: 14px;
+}
+
+.theme__menu {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-end: 0;
+  z-index: 20;
+  min-inline-size: 7.5rem;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+.theme__menu[hidden] {
+  display: none;
+}
+
+.theme__item {
+  display: block;
+  inline-size: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  text-align: start;
+  cursor: pointer;
+}
+
+.theme__item:hover {
+  background: var(--surface);
+}
+
+.theme__item[aria-checked="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------- الإعدادات */
+
+.settings {
+  flex: none;
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+/* ------------------------------------------------------------ حقول الإدخال */
+
 .field-label,
-.settings label {
+.settings label,
+.login-form label {
   display: block;
   margin-bottom: 4px;
   font-size: 13px;
@@ -50,7 +247,9 @@ body {
 }
 
 textarea,
-input[type="url"] {
+input[type="url"],
+input[type="email"],
+input[type="password"] {
   width: 100%;
   padding: 8px;
   border: 1px solid var(--border);
@@ -58,20 +257,29 @@ input[type="url"] {
   font: inherit;
   color: inherit;
   background: var(--bg);
-  resize: vertical;
+}
+
+textarea {
+  resize: none;
+  /* كما في الفقاعات: الكتابة بالإنجليزية داخل حقل RTL تبقى مقروءة. */
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 textarea:focus,
-input[type="url"]:focus {
+input:focus,
+button:focus-visible,
+.log:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
+/* --------------------------------------------------------------- الأزرار */
+
 .primary-button,
 .secondary-button {
-  margin-top: 8px;
   padding: 8px 14px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--action);
   border-radius: 6px;
   font: inherit;
   cursor: pointer;
@@ -79,17 +287,20 @@ input[type="url"]:focus {
 
 .primary-button {
   width: 100%;
-  background: var(--accent);
-  color: var(--accent-fg);
+  margin-top: 8px;
+  background: var(--action);
+  color: var(--action-fg);
 }
 
 .secondary-button {
+  margin-top: 8px;
   background: var(--bg);
-  color: var(--accent);
+  color: var(--fg);
 }
 
 .primary-button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.link-button:disabled {
   opacity: 0.6;
   cursor: progress;
 }
@@ -104,12 +315,46 @@ input[type="url"]:focus {
   text-decoration: underline;
 }
 
-.settings {
-  margin-bottom: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--reply-bg);
+.link-button[hidden] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- الحالات */
+
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+.view-centered {
+  align-items: center;
+  justify-content: center;
+}
+
+.view-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.login-form {
+  overflow-y: auto;
+}
+
+.muted {
+  color: var(--muted);
 }
 
 .hint {
@@ -118,9 +363,12 @@ input[type="url"]:focus {
   color: var(--muted);
 }
 
-.loading {
-  margin: 10px 0 0;
-  color: var(--muted);
+.notice {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--notice-bg);
+  font-size: 13px;
 }
 
 .error {
@@ -131,22 +379,178 @@ input[type="url"]:focus {
   color: var(--error-fg);
 }
 
-.reply-box {
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--reply-bg);
+/* --------------------------------------------------------- سجل المحادثة */
+
+.view-chat {
+  gap: 8px;
 }
 
-.reply-title {
-  margin: 0 0 6px;
-  font-size: 13px;
+.log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* النص المختلط عربي/إنجليزي: `plaintext` يجعل كل فقرة تأخذ اتجاهها من
+     أول حرف قويّ فيها، فلا تنقلب جملة إنجليزية داخل رد عربي ولا يهاجر
+     ترقيمها إلى الطرف الخطأ. */
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+.bubble-user {
+  align-self: flex-start;
+  background: var(--user-bubble);
+  color: var(--user-bubble-fg);
+  border-bottom-right-radius: 3px;
+}
+
+.bubble-assistant {
+  align-self: flex-end;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 3px;
+}
+
+.bubble-sources {
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
   color: var(--muted);
 }
 
-.reply {
+.log-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* مؤشر الانتظار: ثلاث نقاط تنبض بلا تغيير في ارتفاع الفقاعة. */
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 1.7em;
+}
+
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: typing-pulse 1.2s infinite ease-in-out;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* ------------------------------------------------------- شريط الخطأ الدائم */
+
+.banner {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--error-border);
+  border-radius: 6px;
+  background: var(--error-bg);
+  color: var(--error-fg);
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner-text {
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
+  font-size: 13px;
+}
+
+.banner-button {
+  flex: none;
+  align-self: center;
+  padding: 4px 8px;
+  border: 1px solid var(--error-fg);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--error-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.banner-button[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------ حقل الكتابة */
+
+.composer {
+  flex: none;
+}
+
+.composer .primary-button {
+  margin-top: 6px;
+}
+
+/* --------------------------------------------------------- شريط الجلسة */
+
+.session-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.session-bar[hidden] {
+  display: none;
+}
+
+.who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

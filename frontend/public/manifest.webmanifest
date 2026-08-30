@@ -1,6 +1,6 @@
 {
-  "name": "GovAgent — المساعد الذكي للموظف",
-  "short_name": "GovAgent",
+  "name": "GovMind — المساعد الذكي لمنسوبي الجهة",
+  "short_name": "GovMind",
   "description": "مساعد ذكاء اصطناعي عام لموظفي الجهات الحكومية.",
   "lang": "ar",
   "dir": "rtl",
@@ -8,8 +8,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4f6f8",
-  "theme_color": "#1f6f5c",
+  "background_color": "#f5f7fb",
+  "theme_color": "#1e50c8",
   "icons": [
     {
       "src": "/icons/icon-192.png",

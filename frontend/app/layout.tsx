@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cairo } from "next/font/google";
 import AuthProvider from "@/components/AuthProvider";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import "./globals.css";
 
@@ -18,15 +19,15 @@ export const metadata: Metadata = {
   // القالب يضيف اسم التطبيق إلى عنوان كل صفحة، فيبقى التبويب مميَّزًا حين
   // يفتح الموظف أكثر من صفحة.
   title: {
-    default: "GovAgent — المساعد الذكي للموظف",
-    template: "%s · GovAgent",
+    default: "GovMind — المساعد الذكي لمنسوبي الجهة",
+    template: "%s · GovMind",
   },
   description: "مساعد ذكاء اصطناعي عام لموظفي الجهات الحكومية.",
-  applicationName: "GovAgent",
+  applicationName: "GovMind",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "GovAgent",
+    title: "GovMind",
     statusBarStyle: "default",
   },
   icons: {
@@ -44,12 +45,29 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   // بلا `maximumScale`: منع التكبير يقطع على ضعاف البصر وسيلتهم الوحيدة.
-  themeColor: "#1f6f5c",
+  // لونان: المتصفح يختار بحسب إعداد الجهاز، و`applyTheme` يحدّثه عند تبديل
+  // الموظف للوضع يدويًا.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#1e50c8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a1020" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ar" dir="rtl" className={`${cairo.variable} h-full antialiased`}>
+    // `suppressHydrationWarning`: سكربت المظهر يضيف `data-theme` إلى هذا
+    // العنصر قبل الإماهة، فيختلف عمّا رُسم على السيرفر — وهو اختلاف مقصود.
+    <html
+      lang="ar"
+      dir="rtl"
+      className={`${cairo.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* قبل أي أسلوب أو حزمة: يضبط الوضع فلا يومض الأبيض على من اختار
+            الداكن. محتواه ثابت لا يأتي من مدخل مستخدم. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="font-sans min-h-full">
         <AuthProvider>{children}</AuthProvider>
         <ServiceWorkerRegistrar />

@@ -8,7 +8,9 @@ import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import Input from "@/components/ui/Input";
+import ThemeToggle from "@/components/ThemeToggle";
 import { validateEmail, validatePassword } from "@/lib/auth";
+import { ApiError } from "@/lib/api";
 import { describeFailureDetail, type Failure } from "@/lib/errors";
 
 export default function LoginPage() {
@@ -45,23 +47,41 @@ export default function LoginPage() {
       await signIn(email.trim(), password);
       router.replace("/");
     } catch (caught) {
-      setFailure(describeFailureDetail(caught, "تعذّر تسجيل الدخول. حاول مرة أخرى."));
+      // 401 على **هذه الصفحة** ليست جلسة منتهية بل بيانات دخول خاطئة، فلا
+      // تُترجم إلى «انتهت جلستك». رسالة الـBackend تشرح السبب بالعربية.
+      setFailure(
+        caught instanceof ApiError && caught.status === 401
+          ? { message: caught.message, action: "none" }
+          : describeFailureDetail(caught, "تعذّر تسجيل الدخول. حاول مرة أخرى."),
+      );
       setIsSubmitting(false);
     }
     // لا إعادة تعيين عند النجاح: الصفحة تُستبدل، وإطفاء المؤشّر قبلها يومض.
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-10">
+    <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-10">
+      {/* زرّ صغير في الزاوية: المظهر إعدادٌ ثانوي، ووسط صفحة الدخول مكان
+          النموذج لا مكان الإعدادات. */}
+      <div className="absolute start-0 top-0 p-4">
+        <ThemeToggle className="gv-theme--below" />
+      </div>
+
       <div className="w-full max-w-md">
-        <header className="mb-6 text-center">
-          <p className="text-2xl font-bold text-brand">GovAgent</p>
-          <p className="mt-1 text-sm text-muted">المساعد الذكي لموظفي الجهة</p>
+        <header className="mb-7 text-center">
+          <span
+            className="gv-brand__mark mx-auto !size-12 !text-lg"
+            aria-hidden="true"
+          >
+            G
+          </span>
+          <h1 className="mt-4 text-xl font-bold">GovMind</h1>
+          <p className="mt-1 text-sm text-muted">المساعد الذكي لمنسوبي الجهة</p>
         </header>
 
-        <section className="rounded-lg border border-border-subtle bg-surface p-6 shadow-sm sm:p-8">
-          <h1 className="text-xl font-bold">تسجيل الدخول</h1>
-          <p className="mt-2 text-sm text-muted">
+        <section className="rounded-lg border border-border-subtle bg-surface p-6">
+          <h2 className="text-base font-bold">تسجيل الدخول</h2>
+          <p className="mt-1 text-sm text-muted">
             استخدم بريد العمل الذي زوّدك به مسؤول النظام في جهتك.
           </p>
 

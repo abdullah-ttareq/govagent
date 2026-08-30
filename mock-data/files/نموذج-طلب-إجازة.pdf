@@ -1,0 +1,62 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 635 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+60 760 Td
+(GovMind - Sample PDF Test Document) Tj
+T*
+() Tj
+T*
+(This is a fictional test document created for the GovMind MVP.) Tj
+T*
+(It contains no real government data and no real credentials.) Tj
+T*
+() Tj
+T*
+(Leave request procedure \(test content\):) Tj
+T*
+(1. Submit the request through the internal portal.) Tj
+T*
+(2. The direct manager approves within three working days.) Tj
+T*
+(3. Annual leave is thirty days per year.) Tj
+T*
+(4. Up to fifteen days may be carried over to the next year.) Tj
+T*
+(5. Emergency leave is limited to five days per year.) Tj
+T*
+() Tj
+T*
+(Document reference: TEST-PDF-001) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000927 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1024
+%%EOF

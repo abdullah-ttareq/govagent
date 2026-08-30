@@ -474,8 +474,11 @@ def test_sources_are_empty_when_no_file_matches():
 # ---------------------------------------------------------------------------
 # 6) المحادثة العادية تعمل دون ملف
 # ---------------------------------------------------------------------------
-def test_chat_without_a_token_works_and_never_searches(monkeypatch):
-    """بلا رمز دخول لا جهة، وبلا جهة لا يجري أي بحث إطلاقًا."""
+def test_chat_without_a_token_never_searches(monkeypatch):
+    """بلا رمز دخول لا جهة، وبلا جهة لا يجري أي بحث إطلاقًا.
+
+    منذ P4-03 صار الطلب نفسه مرفوضًا بـ401 قبل الوصول إلى البحث.
+    """
 
     def boom(**_kwargs):
         raise AssertionError("لا يجوز البحث بلا organization_id")
@@ -484,11 +487,8 @@ def test_chat_without_a_token_works_and_never_searches(monkeypatch):
 
     response = client.post("/api/chat", json={"message": "اكتب لي خطابًا رسميًا"})
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["provider"] == "mock"
-    assert body["sources"] == []
-    assert "اكتب لي خطابًا رسميًا" in body["reply"]
+    assert response.status_code == 401
+    assert response.json()["code"] == "unauthorized"
 
 
 def test_chat_with_organization_but_no_files_still_answers():
@@ -543,16 +543,20 @@ def test_chat_survives_an_unreachable_oracle(monkeypatch):
 def test_an_organization_id_in_the_body_is_ignored_entirely():
     """الحقل حُذف من الـschema في P2-02، فإرساله لا يفتح ملفات أي جهة.
 
-    كان قبلها كافيًا لقراءة مقاطع أي جهة بلا تسجيل دخول إطلاقًا.
+    كان قبلها كافيًا لقراءة مقاطع أي جهة بلا تسجيل دخول إطلاقًا. ومنذ
+    P4-03 صار المسار محميًا كذلك، فتُجرَّب الحقنة **برمز جهة أخرى**: هي
+    الحالة الوحيدة الباقية التي قد يُطمع فيها بتجاوز العزل.
     """
     ingest(file_id=1, organization_id=ORG_A, filename="سري-أ.txt", text=BUDGET_TEXT)
 
     response = client.post(
         "/api/chat",
         json={"message": "ما مصروفات التشغيل؟", "organization_id": ORG_A},
+        headers=as_member_of(ORG_B),
     )
 
     assert response.status_code == 200
+    # الجهة من الرمز وحده: حقل الجسم لم يفتح ملفات الجهة (أ).
     assert response.json()["sources"] == []
     assert "سري-أ.txt" not in response.text
 

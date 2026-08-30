@@ -139,6 +139,9 @@ export default function Workspace() {
 
       <ChatPanel
         conversationId={activeId}
+        conversationTitle={
+          conversations.find((item) => item.id === activeId)?.title ?? null
+        }
         onConversationCreated={adoptConversation}
         onMessageSent={notifyMessageSent}
         onOpenSidebar={() => setIsSidebarOpen(true)}

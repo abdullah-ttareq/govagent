@@ -15,9 +15,9 @@ const WARNING_WINDOW_DAYS = 30;
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border-subtle bg-background p-4">
-      <p className="text-xs text-muted">{label}</p>
-      <p className="mt-1 text-lg font-bold">{value}</p>
+    <div className="gv-stat">
+      <p className="gv-stat__label">{label}</p>
+      <p className="gv-stat__value">{value}</p>
     </div>
   );
 }

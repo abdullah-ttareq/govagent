@@ -43,7 +43,11 @@ export default function Button({
       aria-busy={isLoading || undefined}
     >
       {isLoading && <span className="gv-spinner" aria-hidden="true" />}
-      <span>{isLoading ? (loadingLabel ?? children) : children}</span>
+      {/* صفّ أفقي: Tailwind يجعل `svg { display: block }`، فأيقونةٌ بجانب نصّ
+          داخل span عادي تنزل سطرًا جديدًا. */}
+      <span className="inline-flex items-center gap-2">
+        {isLoading ? (loadingLabel ?? children) : children}
+      </span>
     </button>
   );
 }

@@ -2,18 +2,69 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
-    <title>GovAgent</title>
+    <title>GovMind</title>
+    <!-- قبل ورقة الأنماط: يضبط الوضع فلا يومض الأبيض على من اختار الداكن.
+         `localStorage` لأنه **متزامن** — `chrome.storage.local` غير متزامن
+         فيصل بعد أول رسم. ولا يحتاج أيًّا منهما صلاحية جديدة. -->
+    <script src="theme-init.js"></script>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
-      <h1>GovAgent</h1>
-      <button id="settings-toggle" class="link-button" type="button">
-        الإعدادات
-      </button>
+      <div class="brand">
+        <img src="icons/icon-32.png" alt="" width="20" height="20" />
+        <h1>GovMind</h1>
+      </div>
+      <div class="header-actions">
+        <div class="theme" id="theme-root">
+          <button
+            id="theme-trigger"
+            class="theme__trigger"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="theme-menu"
+            aria-label="المظهر"
+            title="المظهر"
+          >
+            <svg id="theme-icon" viewBox="0 0 20 20" aria-hidden="true"></svg>
+          </button>
+
+          <div id="theme-menu" class="theme__menu" role="menu" hidden>
+            <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="light">
+              فاتح
+            </button>
+            <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="dark">
+              داكن
+            </button>
+            <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="system">
+              تلقائي
+            </button>
+          </div>
+        </div>
+
+        <button
+          id="new-chat"
+          class="link-button"
+          type="button"
+          title="يبدأ محادثة جديدة ويترك السابقة محفوظة على السيرفر"
+          hidden
+        >
+          محادثة جديدة
+        </button>
+        <button
+          id="settings-toggle"
+          class="link-button"
+          type="button"
+          aria-expanded="false"
+          aria-controls="settings"
+        >
+          الإعدادات
+        </button>
+      </div>
     </header>
 
-    <section id="settings" class="settings" hidden>
+    <section id="settings" class="settings" aria-label="الإعدادات" hidden>
       <label for="api-base-url">رابط سيرفر الجهة (API Base URL)</label>
       <input
         id="api-base-url"
@@ -21,6 +72,7 @@
         dir="ltr"
         placeholder="http://localhost:8000"
         autocomplete="off"
+        spellcheck="false"
       />
       <button id="save-settings" class="secondary-button" type="button">
         حفظ الرابط
@@ -28,30 +80,92 @@
       <p id="settings-status" class="hint" role="status"></p>
     </section>
 
+    <!-- ثلاث حالات يتبدّل بينها الجسم، وارتفاع النافذة ثابت في كلها. -->
     <main class="main">
-      <label for="message" class="field-label">رسالتك</label>
-      <textarea
-        id="message"
-        rows="4"
-        placeholder="اكتب رسالتك هنا…"
-        maxlength="8000"
-      ></textarea>
+      <section id="view-loading" class="view view-centered">
+        <p class="muted" role="status">جارٍ التحقق من الجلسة…</p>
+      </section>
 
-      <button id="send" class="primary-button" type="button">إرسال</button>
+      <section id="view-login" class="view" hidden>
+        <p id="login-notice" class="notice" role="status" hidden></p>
 
-      <p id="loading" class="loading" role="status" hidden>
-        جارٍ الإرسال إلى سيرفر الجهة…
-      </p>
+        <form id="login-form" class="login-form" novalidate>
+          <h2 class="view-title">تسجيل الدخول</h2>
 
-      <p id="error" class="error" role="alert" hidden></p>
+          <label for="email">البريد الإلكتروني</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            dir="ltr"
+            autocomplete="username"
+            spellcheck="false"
+            required
+          />
 
-      <section id="reply-box" class="reply-box" hidden>
-        <h2 class="reply-title">رد الإيجنت</h2>
-        <p id="reply" class="reply"></p>
-        <p id="provider" class="hint"></p>
+          <label for="password">كلمة المرور</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+
+          <div id="login-error" class="banner" role="alert" hidden>
+            <p id="login-error-text" class="banner-text"></p>
+            <button
+              id="login-error-action"
+              class="banner-button"
+              type="button"
+              hidden
+            ></button>
+          </div>
+
+          <button id="login-submit" class="primary-button" type="submit">
+            دخول
+          </button>
+        </form>
+      </section>
+
+      <section id="view-chat" class="view view-chat" hidden>
+        <div
+          id="log"
+          class="log"
+          role="log"
+          aria-live="polite"
+          aria-label="سجل المحادثة"
+          tabindex="0"
+        ></div>
+
+        <div id="banner" class="banner" role="alert" hidden>
+          <p id="banner-text" class="banner-text"></p>
+          <button id="banner-action" class="banner-button" type="button" hidden>
+          </button>
+        </div>
+
+        <form id="composer" class="composer">
+          <label for="message" class="sr-only">رسالتك</label>
+          <textarea
+            id="message"
+            rows="2"
+            placeholder="اكتب رسالتك… (Enter للإرسال، Shift+Enter لسطر جديد)"
+            maxlength="8000"
+            aria-describedby="composer-hint"
+          ></textarea>
+          <button id="send" class="primary-button" type="submit">إرسال</button>
+          <p id="composer-hint" class="sr-only">
+            اضغط Enter للإرسال، وShift مع Enter لسطر جديد.
+          </p>
+        </form>
       </section>
     </main>
 
-    <script src="popup.js"></script>
+    <footer id="session-bar" class="session-bar" hidden>
+      <span id="who" class="who"></span>
+      <button id="logout" class="link-button" type="button">تسجيل الخروج</button>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
   </body>
 </html>

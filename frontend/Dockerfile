@@ -1,4 +1,4 @@
-# صورة GovAgent Frontend — أبسط صورة تعمل.
+# صورة GovMind Frontend — أبسط صورة تعمل.
 
 FROM node:22-slim
 

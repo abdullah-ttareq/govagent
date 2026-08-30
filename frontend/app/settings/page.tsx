@@ -96,7 +96,7 @@ export default function SettingsPage() {
       if (!response.ok) {
         setTestResult({
           tone: "error",
-          text: `العنوان يستجيب لكن ليس بخدمة GovAgent (رد بالحالة ${response.status}). تأكد من الرابط والمنفذ.`,
+          text: `العنوان يستجيب لكن ليس بخدمة GovMind (رد بالحالة ${response.status}). تأكد من الرابط والمنفذ.`,
         });
         return;
       }
@@ -134,7 +134,7 @@ export default function SettingsPage() {
       <section className="mt-5 rounded-lg border border-border-subtle bg-surface p-5 sm:p-6">
         <h2 className="text-lg font-bold">رابط سيرفر الجهة</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          العنوان الذي نُشر عليه GovAgent داخل جهتك. يُحفظ في هذا المتصفح
+          العنوان الذي نُشر عليه GovMind داخل جهتك. يُحفظ في هذا المتصفح
           وحده، ويُستخدم في كل الطلبات بعد الحفظ.
         </p>
 

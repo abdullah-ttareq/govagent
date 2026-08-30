@@ -1,4 +1,4 @@
-# تشغيل GovAgent على سيرفر الجهة
+# تشغيل GovMind على سيرفر الجهة
 
 دليل مختصر لتشغيل النظام داخل الجهة عبر Docker Compose.
 
@@ -55,8 +55,8 @@ curl http://localhost:8000/health
 
 | المتغير | متى تضبطه | مثال |
 |---|---|---|
-| `FRONTEND_URL` | دائمًا عند النشر | `https://govagent.gov.sa` |
-| `NEXT_PUBLIC_BACKEND_URL` | دائمًا عند النشر | `https://api.govagent.gov.sa` |
+| `FRONTEND_URL` | دائمًا عند النشر | `https://govmind.gov.sa` |
+| `NEXT_PUBLIC_BACKEND_URL` | دائمًا عند النشر | `https://api.govmind.gov.sa` |
 | `MODEL_PROVIDER` | لتفعيل الردود الحقيقية | `oracle` |
 | `OCI_REGION` · `OCI_COMPARTMENT_ID` · `OCI_MODEL_ID` | مع `MODEL_PROVIDER=oracle` | من Console الخاص بـOCI |
 | `ORACLE_DSN` · `ORACLE_USER` · `ORACLE_PASSWORD` | لتفعيل حفظ البيانات والبحث | `host:1521/service` |

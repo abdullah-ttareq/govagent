@@ -357,6 +357,54 @@ def test_a_user_of_organization_b_cannot_reach_a_conversation_of_a(
     )
 
 
+def test_a_user_of_organization_b_cannot_modify_or_delete_a_conversation_of_a(
+    employee_a, admin_b
+):
+    """القراءة وحدها لا تكفي: كل فعل كتابة عبر الجهات يُمنع كذلك."""
+    conversation_id = start_conversation(employee_a, "خطة الميزانية الداخلية")
+
+    for method, path, body in (
+        ("GET", f"/api/conversations/{conversation_id}/messages", None),
+        ("PATCH", f"/api/conversations/{conversation_id}", {"title": "مفروض"}),
+        ("DELETE", f"/api/conversations/{conversation_id}", None),
+    ):
+        response = client.request(method, path, json=body, headers=admin_b)
+        assert response.status_code == 404, (method, path)
+        assert "الميزانية" not in response.text
+
+    # والمحادثة سليمة عند صاحبها بعد كل المحاولات.
+    intact = client.get(
+        f"/api/conversations/{conversation_id}", headers=employee_a
+    )
+    assert intact.status_code == 200
+    assert intact.json()["title"] == "خطة الميزانية الداخلية"
+    assert intact.json()["message_count"] == 2
+
+
+def test_continuing_another_organizations_conversation_is_refused(
+    employee_a, admin_b
+):
+    """`conversation_id` من جهة أخرى لا يُكمَّل ولا يُلحق به شيء.
+
+    لولا ذلك لأمكن حقن رسائل في محادثة جهة أخرى بمعرّف واحد.
+    """
+    conversation_id = start_conversation(employee_a, "سؤال داخلي")
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "أكمل", "conversation_id": conversation_id},
+        headers=admin_b,
+    )
+
+    assert response.status_code == 404
+    # ولم تُلحق رسالة بمحادثة الجهة (أ).
+    messages = client.get(
+        f"/api/conversations/{conversation_id}/messages", headers=employee_a
+    ).json()["messages"]
+    assert len(messages) == 2
+    assert all("أكمل" != m["content"] for m in messages)
+
+
 def test_conversation_lists_never_cross_owners(employee_a, colleague_a):
     start_conversation(employee_a, "محادثة الموظف الأول")
     start_conversation(colleague_a, "محادثة الموظف الثاني")

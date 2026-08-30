@@ -32,10 +32,12 @@ class MockModelProvider(ModelProvider):
             else ""
         )
 
+        # النص الظاهر **عام عمدًا** ولا يذكر مزودًا بعينه: اسم المزود الذي
+        # سيُربط لاحقًا قرارٌ لم يُحسم، وذكره في رد يراه الموظف يَعِد بما لم
+        # يُتفق عليه. اختيار المزود يبقى في الإعداد لا في نصّ الرد.
         reply = (
-            "[رد تجريبي من Mock Provider — لا يوجد مودل حقيقي متصل]\n\n"
+            "رد تجريبي — سيتم ربط مزود الذكاء الاصطناعي في مرحلة الإعداد.\n\n"
             f"{context_note}"
-            f"استلمت رسالتك: «{preview}»\n\n"
-            "عند ضبط MODEL_PROVIDER=oracle سيتم توجيه الطلب إلى OCI Generative AI."
+            f"استلمت رسالتك: «{preview}»"
         )
         return ChatResult(reply=reply, provider=self.name)

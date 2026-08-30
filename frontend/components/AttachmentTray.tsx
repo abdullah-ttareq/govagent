@@ -50,7 +50,10 @@ export default function AttachmentTray({
       {items.map((item) => (
         <li key={item.id} className="gv-attachment">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold" title={item.file.name}>
+            <p
+              className="gv-ltr-text truncate text-sm font-semibold"
+              title={item.file.name}
+            >
               {item.file.name}
             </p>
 

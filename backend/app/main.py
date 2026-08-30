@@ -1,4 +1,4 @@
-"""نقطة تشغيل GovAgent Backend."""
+"""نقطة تشغيل GovMind Backend."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -82,10 +82,9 @@ OPENAPI_TAGS = [
     {
         "name": "chat",
         "description": (
-            "إرسال الرسائل إلى الإيجنت والبحث في ملفات الجهة. مع رمز "
-            "الدخول يُحفظ كل تبادل في محادثته ويأتي السياق من السيرفر. "
-            "⚠️ قبول الطلبات بلا رمز **وضع انتقالي** حتى تضيف الواجهة "
-            "والإضافة تسجيل الدخول، ويجب إنهاؤه قبل النشر."
+            "إرسال الرسائل إلى الإيجنت والبحث في ملفات الجهة. **المسار محمي "
+            "بالكامل**: كل طلب يتطلب رمز دخول، ويُحفظ كل تبادل في محادثته، "
+            "ويأتي السياق من السيرفر لا من العميل. الطلب بلا رمز يعيد 401."
         ),
     },
 ]
@@ -140,7 +139,7 @@ APP_DESCRIPTION = """مساعد ذكاء اصطناعي عام لموظفي ال
 > بيانات اعتماد حقيقية."""
 
 app = FastAPI(
-    title="GovAgent API",
+    title="GovMind API",
     description=APP_DESCRIPTION,
     version="0.1.0",
     openapi_tags=OPENAPI_TAGS,

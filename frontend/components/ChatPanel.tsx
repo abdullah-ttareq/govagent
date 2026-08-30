@@ -5,7 +5,6 @@ import AttachmentTray, { type Attachment } from "@/components/AttachmentTray";
 import { useAuth } from "@/components/AuthProvider";
 import MessageBubble, { type ChatMessage } from "@/components/MessageBubble";
 import Alert from "@/components/ui/Alert";
-import Button from "@/components/ui/Button";
 import ErrorNotice from "@/components/ui/ErrorNotice";
 import { ApiError, sendChatMessage } from "@/lib/api";
 import { listMessages } from "@/lib/conversations";
@@ -20,8 +19,23 @@ import {
 /** أقصى ارتفاع لحقل الكتابة قبل أن يمرَّر بدل أن يستمر في التمدد. */
 const MAX_INPUT_HEIGHT = 160;
 
+/**
+ * أمثلة تملأ الحالة الفارغة وتشرح ما يصلح له الإيجنت.
+ *
+ * الضغط عليها يملأ حقل الكتابة **ولا يرسل**: الإرسال قرار الموظف، وبدء
+ * محادثة بضغطة عابرة يفتح محادثات لم يقصدها.
+ */
+const SUGGESTIONS = [
+  "اكتب خطابًا رسميًا لطلب إجازة",
+  "لخّص لي هذا المستند في نقاط",
+  "ما إجراءات اعتماد طلب داخلي؟",
+  "أعد صياغة هذه الفقرة بلغة رسمية",
+];
+
 type ChatPanelProps = {
   conversationId: number | null;
+  /** عنوان المحادثة المعروضة — يظهر في ترويسة اللوحة. */
+  conversationTitle: string | null;
   onConversationCreated: (id: number) => void;
   onMessageSent: () => void;
   onOpenSidebar: () => void;
@@ -29,6 +43,7 @@ type ChatPanelProps = {
 
 export default function ChatPanel({
   conversationId,
+  conversationTitle,
   onConversationCreated,
   onMessageSent,
   onOpenSidebar,
@@ -254,7 +269,12 @@ export default function ChatPanel({
         const result = await sendChatMessage(text, token, conversationId);
         setMessages((current) => [
           ...current,
-          { id: `${localId}-reply`, role: "assistant", content: result.reply },
+          {
+            id: `${localId}-reply`,
+            role: "assistant",
+            content: result.reply,
+            sources: result.sources,
+          },
         ]);
         setAttachments([]);
         // رسالة رفض ملف تخصّ اختيارًا انتهى؛ إبقاؤها بعد إرسال ناجح يقرأ
@@ -315,11 +335,13 @@ export default function ChatPanel({
         queueFiles(event.dataTransfer.files);
       }}
     >
-      <header className="flex items-center gap-3 border-b border-border-subtle bg-surface px-4 py-3 md:hidden">
+      {/* ترويسة واحدة للجوال والمكتب: زر الدرج للجوال وحده، والعنوان يخبر
+          الموظف أيّ محادثة يقرأ بلا أن ينظر إلى الشريط الجانبي. */}
+      <header className="flex items-center gap-3 border-b border-border-subtle bg-surface px-4 py-3">
         <button
           type="button"
           onClick={onOpenSidebar}
-          className="gv-icon-btn"
+          className="gv-icon-btn md:hidden"
           aria-label="فتح قائمة المحادثات"
         >
           <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5">
@@ -329,7 +351,19 @@ export default function ChatPanel({
             />
           </svg>
         </button>
-        <p className="text-base font-bold text-brand">GovAgent</p>
+
+        <p className="text-base font-bold md:hidden">GovMind</p>
+
+        <div className="hidden min-w-0 md:block">
+          <h1 className="truncate text-sm font-bold leading-tight">
+            {conversationTitle ?? "محادثة جديدة"}
+          </h1>
+          <p className="text-xs text-muted">
+            {conversationId === null
+              ? "لم تُحفظ بعد — تُنشأ عند أول رسالة"
+              : "محفوظة على سيرفر جهتك"}
+          </p>
+        </div>
       </header>
 
       {isDragging && (
@@ -343,56 +377,91 @@ export default function ChatPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {isLoadingHistory ? (
-          <ul className="space-y-4" aria-label="جارٍ تحميل المحادثة">
-            <li className="gv-skeleton ms-auto h-16 w-2/3" />
-            <li className="gv-skeleton h-12 w-1/2" />
-            <li className="gv-skeleton ms-auto h-20 w-3/4" />
-          </ul>
-        ) : isEmpty ? (
-          <div className="mx-auto max-w-md py-10 text-center">
-            <p className="text-lg font-bold">كيف أساعدك اليوم؟</p>
-            <p className="mt-3 text-sm leading-relaxed text-muted">
-              اسألني عن أي شيء يتعلق بعملك: صياغة خطاب، تلخيص مستند، ترجمة نص،
-              أو سؤال برمجي. يمكنك إرفاق ملف لأجيبك من محتواه.
+      {/* الحالة الفارغة تتوسّط ارتفاع اللوحة بدل أن تتعلّق بأعلاها وتترك
+          فراغًا شاسعًا تحتها. وعند وجود رسائل يعود التدفّق من الأعلى. */}
+      <div
+        className={`flex-1 overflow-y-auto p-4 sm:p-6 ${
+          isEmpty && !isLoadingHistory ? "flex flex-col justify-center" : ""
+        }`}
+      >
+        {/* عمود واحد بعرض محدود، يحاذي صندوق الكتابة أسفله: الرسائل الممتدة
+            بعرض الشاشة كلها تفقد خيط المحادثة على الشاشات العريضة. */}
+        <div className="mx-auto w-full max-w-3xl">
+          {isLoadingHistory ? (
+            <ul className="space-y-4" aria-label="جارٍ تحميل المحادثة">
+              <li className="gv-skeleton ms-auto h-16 w-2/3" />
+              <li className="gv-skeleton h-12 w-1/2" />
+              <li className="gv-skeleton ms-auto h-20 w-3/4" />
+            </ul>
+          ) : isEmpty ? (
+            <div className="text-center">
+              {/* زخرفي: الحرف لا يحمل معنى لقارئ الشاشة، والعنوان تحته
+                  يقول المقصود. */}
+              <p className="gv-brand__mark mx-auto !size-11 !text-lg" aria-hidden="true">
+                G
+              </p>
+              <p className="mt-4 text-xl font-bold">كيف أساعدك اليوم؟</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
+                اسألني عن أي شيء يتعلق بعملك، أو أرفق ملفًا لأجيبك من محتواه.
+              </p>
+
+              <ul className="mt-6 grid gap-2 sm:grid-cols-2">
+                {SUGGESTIONS.map((suggestion) => (
+                  <li key={suggestion} className="flex">
+                    <button
+                      type="button"
+                      className="gv-suggestion w-full"
+                      onClick={() => {
+                        setInput(suggestion);
+                        // التركيز بعد الرسم حتى يقيس الحقل ارتفاعه الجديد.
+                        requestAnimationFrame(() => {
+                          textareaRef.current?.focus();
+                          resizeInput();
+                        });
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+            </div>
+          )}
+
+          {isSending && !hasPendingUploads && (
+            <p
+              className="mt-4 flex items-center gap-2 text-sm text-muted"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="gv-spinner" aria-hidden="true" />
+              جارٍ إعداد الرد…
             </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
-          </div>
-        )}
+          )}
 
-        {isSending && !hasPendingUploads && (
-          <p
-            className="mt-4 flex items-center gap-2 text-sm text-muted"
-            role="status"
-            aria-live="polite"
-          >
-            <span className="gv-spinner" aria-hidden="true" />
-            جارٍ إعداد الرد…
-          </p>
-        )}
+          {failure && (
+            <ErrorNotice
+              failure={failure}
+              className="mt-4"
+              onRetry={
+                // تحميل المحادثة يُعاد، أما الرسالة فنصّها عاد إلى الحقل
+                // فيعيدها الموظف بزر الإرسال نفسه.
+                conversationId !== null && messages.length === 0
+                  ? () => loadHistory()
+                  : undefined
+              }
+            />
+          )}
 
-        {failure && (
-          <ErrorNotice
-            failure={failure}
-            className="mt-4"
-            onRetry={
-              // تحميل المحادثة يُعاد، أما الرسالة فنصّها عاد إلى الحقل
-              // فيعيدها الموظف بزر الإرسال نفسه.
-              conversationId !== null && messages.length === 0
-                ? () => loadHistory()
-                : undefined
-            }
-          />
-        )}
-
-        {/* هدف التمرير التلقائي — يبقى بعد كل شيء في مجرى المحتوى. */}
-        <div ref={bottomRef} />
+          {/* هدف التمرير التلقائي — يبقى بعد كل شيء في مجرى المحتوى. */}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       <form
@@ -411,7 +480,7 @@ export default function ChatPanel({
             </Alert>
           )}
 
-          <div className="flex items-end gap-2">
+          <div className="gv-composer">
             <input
               ref={fileInputRef}
               type="file"
@@ -429,7 +498,7 @@ export default function ChatPanel({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isSending}
-              className="gv-icon-btn gv-icon-btn--lg"
+              className="gv-composer__btn"
               aria-label="إرفاق ملف"
               title={`إرفاق ملف (${SUPPORTED_EXTENSIONS.join("، ")})`}
             >
@@ -453,22 +522,44 @@ export default function ChatPanel({
               placeholder="اكتب رسالتك هنا…"
               aria-label="نص الرسالة"
               aria-describedby="chat-input-hint"
-              className="gv-input flex-1 resize-none"
+              className="gv-composer__input"
             />
 
-            <Button
+            {/* أيقونة لا كلمة: زر بعرض «جارٍ الإرسال…» يتمدّد ويتقلّص مع
+                الحالة فيقفز الصندوق. النص للقارئ في aria-label. */}
+            <button
               type="submit"
               disabled={isSending || !input.trim()}
-              isLoading={isSending}
-              loadingLabel={hasPendingUploads ? "جارٍ الرفع…" : "جارٍ الإرسال…"}
+              className="gv-composer__btn gv-composer__send"
+              aria-label={
+                isSending
+                  ? hasPendingUploads
+                    ? "جارٍ الرفع…"
+                    : "جارٍ الإرسال…"
+                  : "إرسال"
+              }
+              title="إرسال"
+              aria-busy={isSending || undefined}
             >
-              إرسال
-            </Button>
+              {isSending ? (
+                <span className="gv-spinner" aria-hidden="true" />
+              ) : (
+                <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5">
+                  {/* سهم نحو جهة البداية (اليمين في RTL) — اتجاه الإرسال. */}
+                  <path
+                    fill="currentColor"
+                    d="M17.3 10.7 4.6 16.4a.7.7 0 0 1-1-.8L5.2 10 3.6 4.4a.7.7 0 0 1 1-.8l12.7 5.7a.75.75 0 0 1 0 1.4M6.4 10.75l-1 3.6 9.2-4.35-9.2-4.35 1 3.6H11a.75.75 0 0 1 0 1.5z"
+                  />
+                </svg>
+              )}
+            </button>
           </div>
 
           {/* الاختصار خارج الحقل لا داخله: نصّ توضيحي طويل يلتف داخل حقل
               بسطر واحد فيُقصّ، ويختفي أصلًا بمجرّد أن يكتب المستخدم. */}
-          <p className="gv-hint mt-2 hidden sm:block" id="chat-input-hint">
+          {/* مسافة سفلية تفصله عن حافة الشاشة: كان يلتصق بأسفلها على
+              الشاشات القصيرة فيبدو مقصوصًا. */}
+          <p className="gv-hint mt-2 mb-1 hidden sm:block" id="chat-input-hint">
             Enter للإرسال · Shift+Enter لسطر جديد · اسحب ملفًا وأفلته للإرفاق
           </p>
         </div>

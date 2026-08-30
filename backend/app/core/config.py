@@ -8,7 +8,7 @@ ModelProviderName = Literal["mock", "oracle", "local"]
 
 
 class Settings(BaseSettings):
-    """إعدادات GovAgent.
+    """إعدادات GovMind.
 
     القيم الافتراضية تجعل المشروع يعمل محليًا بدون أي بيانات اعتماد Oracle.
     """
