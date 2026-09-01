@@ -16,10 +16,12 @@
  * وهذا الملف يجمع الحالة ويعرض ما تقوله. لا شرط تدفّق مكرَّر هنا.
  */
 
+import { RUNTIME_WAIT_MS } from "./config.js";
 import {
   activateDevice,
   fetchSubscription,
   login,
+  requestInstallationSession,
   requestInstallerUrl,
   verifyDevice,
 } from "./lib/api.js";
@@ -34,8 +36,20 @@ import {
 } from "./lib/download.js";
 import { actionLabel, describeFailure } from "./lib/errors.js";
 import {
+  ActivationFailedError,
+  findRuntime,
+  handOverToken,
+  openGovMind,
+  waitForRuntime,
+} from "./lib/runtime.js";
+import {
+  clearInstallToken,
   clearSession,
+  getInstallToken,
+  getRuntimePort,
   getSession,
+  setInstallToken,
+  setRuntimePort,
   getWelcomeSeen,
   isSessionUsable,
   pruneLegacyKeys,
@@ -81,9 +95,18 @@ const el = {
   progressLabel: document.getElementById("progress-label"),
   downloadCancel: document.getElementById("download-cancel"),
 
-  doneFileName: document.getElementById("done-file-name"),
-  doneShow: document.getElementById("done-show"),
-  doneRestart: document.getElementById("done-restart"),
+  awaitingFileName: document.getElementById("awaiting-file-name"),
+  awaitingLabel: document.getElementById("awaiting-label"),
+  awaitingShow: document.getElementById("awaiting-show"),
+  awaitingRetry: document.getElementById("awaiting-retry"),
+
+  preparingMessage: document.getElementById("preparing-message"),
+  preparingProgress: document.getElementById("preparing-progress"),
+  preparingBar: document.getElementById("preparing-bar"),
+  preparingLabel: document.getElementById("preparing-label"),
+
+  installedFacts: document.getElementById("installed-facts"),
+  installedOpen: document.getElementById("installed-open"),
 
   themeRoot: document.getElementById("theme-root"),
   themeTrigger: document.getElementById("theme-trigger"),
@@ -107,6 +130,13 @@ const state = {
   downloadFileName: "",
   stopWatching: null,
   busy: false,
+  /** آخر حالة قرأتها الإضافة من `/health` الخاص بالـRuntime. */
+  runtime: null,
+  runtimePort: null,
+  /** هل يجري تسليم رمز التركيب الآن؟ */
+  handingOver: false,
+  /** يوقف استطلاع الـRuntime عند إغلاق النافذة. */
+  pollAbort: false,
 };
 
 /* =========================================================================
@@ -183,6 +213,8 @@ function render() {
     account: state.account,
     subscription: state.subscription,
     download: state.download,
+    runtime: state.runtime,
+    handingOver: state.handingOver,
   });
 
   for (const screen of document.querySelectorAll(".screen")) {
@@ -199,9 +231,11 @@ function render() {
   if (step === STEPS.DEVICE_TAKEN) renderDeviceTaken();
   if (step === STEPS.ACTIVATE) renderActivate();
   if (step === STEPS.INSTALL) renderInstall();
-  if (step === STEPS.DONE) {
-    el.doneFileName.textContent = state.downloadFileName || "المثبّت";
+  if (step === STEPS.AWAITING_RUNTIME) {
+    el.awaitingFileName.textContent = state.downloadFileName || "المثبّت";
   }
+  if (step === STEPS.PREPARING_MODEL) renderPreparing();
+  if (step === STEPS.INSTALLED) renderInstalled();
   return step;
 }
 
@@ -241,6 +275,43 @@ function renderActivate() {
     ["الحساب", state.account?.email],
     ["حالة الاشتراك", STATUS_LABELS[subscription.status] ?? ""],
     ["ينتهي في", formatDate(subscription.expires_at)],
+  ]);
+}
+
+/** يعرض تقدّم الـRuntime وهو ينزّل المودل أو يتحقق منه. */
+function renderPreparing() {
+  const runtime = state.runtime ?? {};
+  el.preparingMessage.textContent =
+    runtime.message || "جارٍ تجهيز GovMind على هذا الجهاز…";
+
+  const percent = runtime.progress;
+  if (typeof percent === "number") {
+    delete el.preparingBar.dataset.indeterminate;
+    el.preparingBar.style.inlineSize = `${percent}%`;
+    el.preparingProgress.setAttribute("aria-valuenow", String(percent));
+    el.preparingLabel.textContent =
+      runtime.total_bytes > 0
+        ? `${percent}٪ — ${formatBytes(runtime.downloaded_bytes)} من ${formatBytes(runtime.total_bytes)}`
+        : `${percent}٪`;
+    return;
+  }
+
+  // مرحلة بلا نسبة (تحقّق أو تحميل في الذاكرة): حركة مستمرة لا رقم كاذب.
+  el.preparingBar.dataset.indeterminate = "true";
+  el.preparingBar.style.removeProperty("inline-size");
+  el.preparingProgress.removeAttribute("aria-valuenow");
+  el.preparingLabel.textContent = "";
+}
+
+function renderInstalled() {
+  const runtime = state.runtime ?? {};
+  renderFacts(el.installedFacts, [
+    ["الجهاز", runtime.device_name],
+    ["الحساب", state.account?.email],
+    [
+      "حالة الاشتراك",
+      STATUS_LABELS[runtime.subscription_status ?? state.subscription?.status] ?? "",
+    ],
   ]);
 }
 
@@ -348,7 +419,16 @@ async function doSignIn(event) {
       // كلمة المرور تُمحى من الحقل فور نجاح الدخول: النافذة قد تبقى مفتوحة.
       el.signinPassword.value = "";
 
-      if (state.account) await refreshSubscription();
+      if (state.account) {
+        await refreshSubscription();
+        // Runtime مثبَّت وينتظر التفعيل؟ يُتبنّى فور الدخول بلا ضغطة.
+        const existing = await findRuntime();
+        if (existing) {
+          render();
+          void adoptRuntime(existing);
+          return;
+        }
+      }
       render();
     } catch (caught) {
       // ⚠️ ٤٠١ **هنا** تعني بيانات دخول خاطئة لا جلسة منتهية: لا جلسة بعد
@@ -410,6 +490,9 @@ async function doSignOut() {
   state.subscription = null;
   state.download = "idle";
   state.downloadId = null;
+  // الـRuntime يخصّ الجهاز لا الجلسة، لكن عرضه بعد الخروج بلا معنى.
+  state.runtime = null;
+  state.handingOver = false;
   clearAlert();
   // الترحيب لا يُعاد على من رآه: الخروج ليس تثبيتًا جديدًا.
   state.welcomeSeen = true;
@@ -450,8 +533,16 @@ async function doDownload() {
     let link;
     try {
       const deviceId = await ensureDeviceId();
+
+      // ⚠️ **رمز التركيب يُطلب قبل التنزيل لا بعده.** لو طُلب بعد التثبيت
+      // لاحتاج المستخدم أن يعود إلى الإضافة ويضغط زرًّا آخر — والمطلوب
+      // أن يكتمل كل شيء بضغطة واحدة.
+      const session = await requestInstallationSession(state.session.token);
+      await setInstallToken(session.token, session.expires_at);
+
       link = await requestInstallerUrl(state.session.token, deviceId);
     } catch (caught) {
+      await clearInstallToken();
       await handleFailure(caught, "تعذّر تجهيز رابط التنزيل. حاول مرة أخرى.");
       return;
     }
@@ -478,6 +569,8 @@ function watchProgress() {
       stopWatching();
       state.download = "done";
       render();
+      // المثبّت على القرص: من الآن ننتظر أن يفتحه المستخدم فيظهر الـRuntime.
+      void watchForRuntime();
     },
     onFail: (message) => {
       stopWatching();
@@ -496,6 +589,126 @@ async function doCancelDownload() {
   state.downloadId = null;
   showAlert("أُلغي التنزيل. يمكنك بدؤه من جديد في أي وقت.", "none");
   render();
+}
+
+/* =========================================================================
+   الـRuntime: الاكتشاف وتسليم الرمز ومتابعة التجهيز
+   ========================================================================= */
+
+/**
+ * ينتظر ظهور الـRuntime بعد أن يفتح المستخدم المثبّت، ثم يسلّمه الرمز.
+ *
+ * **الانتظار طويل عمدًا** (١٥ دقيقة): يشمل فتح الملف، وموافقة ويندوز،
+ * وخطوات المثبّت. الاستسلام قبل ذلك يترك المستخدم أمام شاشة انتظار بينما
+ * التثبيت يعمل.
+ */
+async function watchForRuntime() {
+  const found = await waitForRuntime({
+    timeoutMs: RUNTIME_WAIT_MS,
+    shouldStop: () => state.pollAbort,
+    onTick: (elapsed) => {
+      if (!el.awaitingLabel) return;
+      const minutes = Math.floor(elapsed / 60000);
+      el.awaitingLabel.textContent =
+        minutes >= 1
+          ? `جارٍ البحث عن GovMind على هذا الجهاز… (${minutes} د)`
+          : "جارٍ البحث عن GovMind على هذا الجهاز…";
+    },
+  });
+
+  if (!found) return;
+  await adoptRuntime(found);
+}
+
+/** يتبنّى Runtime عُثر عليه: يحفظ منفذه ويكمل المسار. */
+async function adoptRuntime({ port, health }) {
+  state.runtimePort = port;
+  state.runtime = health;
+  await setRuntimePort(port);
+  render();
+
+  if (health.needs_activation) {
+    await deliverToken();
+    return;
+  }
+  void followRuntime();
+}
+
+/**
+ * يسلّم رمز التركيب إلى الـRuntime.
+ *
+ * ⚠️ **يُمحى الرمز بعد المحاولة، نجحت أو فشلت.** رمزٌ لمرة واحدة يبقى في
+ * التخزين بعد استهلاكه سرٌّ بلا فائدة، وبقاؤه بعد الفشل يجعل الإضافة
+ * تعيد إرساله إلى ما لا نهاية.
+ */
+async function deliverToken() {
+  // **يُصدر رمزًا جديدًا عند الحاجة بدل أن يتوقّف.**
+  //
+  // الحالة الواقعية: Runtime مثبَّت وينتظر التفعيل، والإضافة بلا رمز —
+  // أُعيد تثبيتها، أو انتهت مهلة الرمز أثناء التثبيت. إجبار المستخدم على
+  // إعادة تنزيل مثبّت يملكه أصلًا عقوبة بلا سبب؛ الرمز وحده هو الناقص.
+  if (!isSessionUsable(state.session)) {
+    // لا يمكن إصدار رمز بلا جلسة. الشاشة تعود إلى الدخول من تلقائها.
+    return;
+  }
+
+  let token = await getInstallToken();
+  if (!token) {
+    try {
+      const session = await requestInstallationSession(state.session.token);
+      await setInstallToken(session.token, session.expires_at);
+      token = session.token;
+    } catch (caught) {
+      await handleFailure(caught, "تعذّر تجهيز رمز التركيب. أعد المحاولة.");
+      return;
+    }
+  }
+
+  state.handingOver = true;
+  clearAlert();
+  render();
+
+  try {
+    await handOverToken(state.runtimePort, token);
+  } catch (caught) {
+    const message =
+      caught instanceof ActivationFailedError
+        ? caught.message
+        : "تعذّر تفعيل هذا الجهاز. أعد المحاولة.";
+    showAlert(message, "retry");
+  } finally {
+    await clearInstallToken();
+    state.handingOver = false;
+  }
+
+  void followRuntime();
+}
+
+/** يتابع تقدّم الـRuntime حتى يصير جاهزًا أو يتوقف. */
+async function followRuntime() {
+  for (;;) {
+    if (state.pollAbort || state.runtimePort === null) return;
+
+    const found = await findRuntime();
+    if (!found) {
+      // اختفى الـRuntime (أُعيد تشغيله أو أُغلق): نعود إلى انتظاره.
+      state.runtime = null;
+      render();
+      return;
+    }
+
+    state.runtime = found.health;
+    state.runtimePort = found.port;
+    render();
+
+    if (found.health.is_ready) return;
+    if (found.health.phase === "blocked" || found.health.phase === "error") {
+      showAlert(found.health.message, "retry");
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
 }
 
 /* =========================================================================
@@ -584,16 +797,6 @@ el.activateSubmit?.addEventListener("click", doActivate);
 el.installStart?.addEventListener("click", doDownload);
 el.downloadCancel?.addEventListener("click", doCancelDownload);
 
-el.doneShow?.addEventListener("click", () => {
-  if (state.downloadId !== null) showInFolder(state.downloadId);
-});
-
-el.doneRestart?.addEventListener("click", () => {
-  state.download = "idle";
-  state.downloadId = null;
-  render();
-});
-
 for (const button of document.querySelectorAll("[data-signout]")) {
   button.addEventListener("click", doSignOut);
 }
@@ -637,7 +840,31 @@ if (typeof window.matchMedia === "function") {
 }
 
 // النافذة تُغلق بفقد التركيز؛ إيقاف المؤقّت يمنع مؤقّتًا معلّقًا بلا نافذة.
-window.addEventListener("unload", stopWatching);
+el.awaitingShow?.addEventListener("click", () => {
+  if (state.downloadId !== null) showInFolder(state.downloadId);
+});
+
+el.awaitingRetry?.addEventListener("click", () => {
+  clearAlert();
+  // Runtime موجود لكنه ينتظر التفعيل: أعد التسليم بدل إعادة التنزيل.
+  if (state.runtime?.needs_activation && state.runtimePort !== null) {
+    void deliverToken();
+    return;
+  }
+  state.download = "idle";
+  state.downloadId = null;
+  render();
+});
+
+el.installedOpen?.addEventListener("click", () => {
+  if (state.runtimePort !== null) void openGovMind(state.runtimePort);
+});
+
+window.addEventListener("unload", () => {
+  stopWatching();
+  // النافذة تُغلق بفقد التركيز؛ إيقاف الاستطلاع يمنع حلقة بلا نافذة.
+  state.pollAbort = true;
+});
 
 /* =========================================================================
    الإقلاع
@@ -666,6 +893,27 @@ export async function boot() {
   }
 
   if (state.account) await updateAccount(state.account);
+
+  // ⚠️ **لا يُلمس الـRuntime قبل تسجيل الدخول.** حالته لا تعني شيئًا لمن لم
+  // يسجّل دخوله، وتسليم رمز تركيب يحتاج جلسةً لإصداره — فمحاولته بلا جلسة
+  // تسقط على قيمة غير موجودة.
+  if (!state.account) return render();
+
+  // Runtime مثبَّت من قبل؟ حالته تسبق كل ما يخصّ المثبّت: من ثبّت البرنامج
+  // لا يُعرض له «نزّل المثبّت» في كل مرة يفتح فيها الإضافة.
+  const existing = await findRuntime();
+  if (existing) {
+    state.runtimePort = existing.port;
+    state.runtime = existing.health;
+    render();
+    if (existing.health.needs_activation) {
+      void deliverToken();
+    } else if (!existing.health.is_ready) {
+      void followRuntime();
+    }
+    return render();
+  }
+
   return render();
 }
 

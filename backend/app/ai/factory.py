@@ -2,6 +2,7 @@
 
 from ..core.config import settings
 from .base import ModelProvider, ModelProviderError
+from .llamacpp_provider import LlamaCppModelProvider
 from .lmstudio_provider import LMStudioModelProvider
 from .local_provider import LocalModelProvider
 from .mock_provider import MockModelProvider
@@ -11,6 +12,8 @@ _PROVIDERS: dict[str, type[ModelProvider]] = {
     "mock": MockModelProvider,
     "oracle": OracleModelProvider,
     "lmstudio": LMStudioModelProvider,
+    # المودل داخل GovMind Runtime — لا يحتاج LM Studio مثبَّتة.
+    "llamacpp": LlamaCppModelProvider,
     "local": LocalModelProvider,
 }
 

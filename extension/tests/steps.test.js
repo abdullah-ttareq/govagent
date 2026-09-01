@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  RUNTIME_BUSY_PHASES,
   STEPS,
   STEP_NUMBERS,
   STEP_TITLES,
@@ -149,10 +150,82 @@ describe("٥) التنزيل", () => {
     ).toBe(STEPS.DOWNLOADING);
   });
 
-  it("يعرض شاشة الاكتمال بعد انتهائه", () => {
+  it("بعد اكتمال التنزيل ينتظر فتح المثبّت", () => {
+    // لا شاشة «اكتمل التنزيل» منفصلة: هذه تقول الشيء نفسه وتنتظر النتيجة.
     expect(
       resolveStep({ ...signedIn, subscription: usable, download: "done" }),
-    ).toBe(STEPS.DONE);
+    ).toBe(STEPS.AWAITING_RUNTIME);
+  });
+});
+
+describe("٦) الـRuntime بعد التثبيت", () => {
+  const ready = { is_ready: true, needs_activation: false, phase: "ready" };
+  const needsActivation = {
+    is_ready: false,
+    needs_activation: true,
+    phase: "awaiting_activation",
+  };
+  const preparing = {
+    is_ready: false,
+    needs_activation: false,
+    phase: "downloading_model",
+  };
+
+  it("وجود Runtime يسبق كل ما يخصّ المثبّت", () => {
+    // من ثبّت البرنامج فعلًا لا يُعرض له «نزّل المثبّت» من جديد.
+    expect(
+      resolveStep({ ...signedIn, subscription: usable, runtime: ready }),
+    ).toBe(STEPS.INSTALLED);
+  });
+
+  it("Runtime ينتظر التفعيل يعرض شاشة انتظار المثبّت", () => {
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        download: "done",
+        runtime: needsActivation,
+      }),
+    ).toBe(STEPS.AWAITING_RUNTIME);
+  });
+
+  it("تسليم الرمز الجاري يعرض شاشة التفعيل", () => {
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        runtime: needsActivation,
+        handingOver: true,
+      }),
+    ).toBe(STEPS.ACTIVATING_DEVICE);
+  });
+
+  it("تنزيل المودل يعرض شاشة التجهيز", () => {
+    expect(
+      resolveStep({ ...signedIn, subscription: usable, runtime: preparing }),
+    ).toBe(STEPS.PREPARING_MODEL);
+  });
+
+  it("اشتراك محجوب يسبق حالة الـRuntime", () => {
+    // Runtime جاهز على جهاز اشتراكه انتهى: الحجب هو ما يُعرض.
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: { ...usable, is_usable: false },
+        runtime: ready,
+      }),
+    ).toBe(STEPS.SUBSCRIPTION_BLOCKED);
+  });
+
+  it("مراحل انشغال الـRuntime تطابق ما يعلنه البرنامج", () => {
+    // القائمة منسوخة من `runtime/govmind_runtime/state.py` — اختلافهما
+    // يجعل الإضافة تعرض شاشة خاطئة لمرحلة صحيحة.
+    expect([...RUNTIME_BUSY_PHASES]).toEqual([
+      "activating",
+      "downloading_model",
+      "verifying_model",
+      "starting_model",
+    ]);
   });
 });
 

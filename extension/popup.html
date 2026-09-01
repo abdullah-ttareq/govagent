@@ -57,6 +57,8 @@
       <span class="steps__dot" data-step="3"></span>
       <span class="steps__dot" data-step="4"></span>
       <span class="steps__dot" data-step="5"></span>
+      <span class="steps__dot" data-step="6"></span>
+      <span class="steps__dot" data-step="7"></span>
     </div>
 
     <main class="main" id="main">
@@ -213,30 +215,80 @@
         </button>
       </section>
 
-      <!-- ٩) اكتمل -->
-      <section class="screen" id="screen-done" hidden>
-        <div class="status status--ok" aria-hidden="true">✓</div>
-        <h2 class="screen__title">اكتمل التنزيل</h2>
-        <!-- ⚠️ الإضافة **لا تشغّل** المثبّت. الخطوة الأخيرة فعل المستخدم. -->
+      <!-- ٩) بانتظار فتح المثبّت وظهور الـRuntime -->
+      <section class="screen" id="screen-awaiting-runtime" hidden>
+        <h2 class="screen__title">افتح المثبّت لإكمال التثبيت</h2>
+        <!-- ⚠️ الإضافة **لا تشغّل** المثبّت. الخطوة فعل المستخدم. -->
         <ol class="checklist">
-          <li>افتح الملف المنزَّل <strong id="done-file-name"></strong>.</li>
+          <li>افتح الملف المنزَّل <strong id="awaiting-file-name"></strong>.</li>
           <li>وافق على نافذة ويندوز التي تطلب الإذن بالتثبيت.</li>
           <li>أكمل خطوات المثبّت حتى النهاية.</li>
         </ol>
         <p class="note">
-          إن لم تظهر نافذة الإذن، انقر الملف بزر الفأرة الأيمن ثم اختر
-          «تشغيل كمسؤول».
+          سيكمل GovMind التجهيز تلقائيًا بمجرد انتهاء التثبيت. أبقِ هذه
+          النافذة مفتوحة إن أمكن.
+        </p>
+        <div class="progress" role="status">
+          <div class="progress__bar" data-indeterminate="true"></div>
+        </div>
+        <p class="progress__label" id="awaiting-label">
+          جارٍ البحث عن GovMind على هذا الجهاز…
         </p>
         <div class="actions">
-          <button class="button button--primary" id="done-show" type="button">
+          <button class="button button--secondary" id="awaiting-show" type="button">
             أظهر الملف في المجلد
           </button>
-          <button class="button button--ghost" id="done-restart" type="button">
-            نزّله مرة أخرى
+          <button class="button button--ghost" id="awaiting-retry" type="button">
+            نزّل المثبّت مرة أخرى
           </button>
         </div>
       </section>
-    </main>
+
+      <!-- ١٠) تسليم رمز التركيب وتفعيل الجهاز -->
+      <section class="screen" id="screen-activating-device" hidden>
+        <h2 class="screen__title">جارٍ تفعيل هذا الجهاز</h2>
+        <p class="screen__lead">
+          يجري ربط اشتراكك بهذا الجهاز. لا تغلق GovMind.
+        </p>
+        <div class="progress" role="status">
+          <div class="progress__bar" data-indeterminate="true"></div>
+        </div>
+      </section>
+
+      <!-- ١١) الـRuntime يجهّز المودل -->
+      <section class="screen" id="screen-preparing-model" hidden>
+        <h2 class="screen__title">جارٍ تجهيز GovMind</h2>
+        <p class="screen__lead" id="preparing-message">
+          جارٍ تنزيل المودل…
+        </p>
+        <div
+          class="progress"
+          role="progressbar"
+          id="preparing-progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="progress__bar" id="preparing-bar"></div>
+        </div>
+        <p class="progress__label" id="preparing-label"></p>
+        <p class="note">
+          يُنزَّل المودل مرة واحدة فقط. يمكنك إغلاق هذه النافذة؛ سيكمل
+          GovMind العمل في الخلفية.
+        </p>
+      </section>
+
+      <!-- ١٢) جاهز -->
+      <section class="screen" id="screen-installed" hidden>
+        <div class="status status--ok" aria-hidden="true">✓</div>
+        <h2 class="screen__title">GovMind جاهز على هذا الجهاز</h2>
+        <p class="screen__lead">
+          اكتمل التثبيت والتفعيل. يمكنك فتح GovMind الآن.
+        </p>
+        <dl class="facts" id="installed-facts"></dl>
+        <button class="button button--primary" id="installed-open" type="button">
+          افتح GovMind
+        </button>
+      </section>
 
     <!-- شريط الخطأ. يظهر فوق أي شاشة ولا يستبدلها: الشاشة سياق الخطأ. -->
     <div class="alert" id="alert" hidden>

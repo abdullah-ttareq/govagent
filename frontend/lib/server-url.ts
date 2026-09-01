@@ -9,9 +9,25 @@
 
 const STORAGE_KEY = "govagent.server_url";
 
-/** الافتراضي وقت البناء — يُستخدم ما لم يحفظ الموظف عنوانًا. */
-export const DEFAULT_SERVER_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL?.trim() || "http://localhost:8000";
+/**
+ * هل هذه نسخة سطح المكتب التي يخدمها GovMind Runtime؟
+ *
+ * تُثبَّت وقت البناء. في هذه النسخة **لا يُدخل العميل عنوانًا إطلاقًا**:
+ * الواجهة والـAPI يخرجان من الأصل نفسه (الـRuntime على الاسترجاع المحلي)،
+ * فالعنوان النسبي هو الصحيح دائمًا — وحقل «رابط السيرفر» يختفي.
+ */
+export const IS_DESKTOP = process.env.NEXT_PUBLIC_GOVMIND_DESKTOP === "1";
+
+/**
+ * الافتراضي وقت البناء.
+ *
+ * على سطح المكتب: نصّ فارغ = **الأصل نفسه**. مسارٌ نسبي `/api/...` يذهب
+ * إلى الـRuntime الذي خدم الصفحة، أيًّا كان المنفذ الذي حجزه — ولو كان
+ * المنفذ المفضَّل مشغولًا فاختار غيره.
+ */
+export const DEFAULT_SERVER_URL = IS_DESKTOP
+  ? ""
+  : process.env.NEXT_PUBLIC_BACKEND_URL?.trim() || "http://localhost:8000";
 
 /** حدث يُطلَق عند تغيّر العنوان، لتتابعه الواجهة في التبويب نفسه. */
 const CHANGE_EVENT = "govagent:server-url-changed";
@@ -46,6 +62,9 @@ export function validateServerUrl(value: string): string | null {
 
 /** العنوان المستخدَم في كل الطلبات الآن. */
 export function getServerUrl(): string {
+  // على سطح المكتب لا تُقرأ قيمة مخزّنة: قيمةٌ قديمة تشير إلى منفذ لم يعد
+  // مستعمَلًا تكسر التطبيق بلا أن يعرف العميل السبب ولا كيف يصلحه.
+  if (IS_DESKTOP) return DEFAULT_SERVER_URL;
   if (typeof window === "undefined") return DEFAULT_SERVER_URL;
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -57,6 +76,7 @@ export function getServerUrl(): string {
 
 /** هل العنوان الحالي محفوظ من الموظف، أم هو افتراضي البناء؟ */
 export function hasStoredServerUrl(): boolean {
+  if (IS_DESKTOP) return false;
   if (typeof window === "undefined") return false;
   try {
     return window.localStorage.getItem(STORAGE_KEY) !== null;

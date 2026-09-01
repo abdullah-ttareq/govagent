@@ -28,3 +28,16 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# GovMind Runtime — ثنائيات ومخرجات بناء لا تُودَع في المستودع
+runtime/vendor/
+runtime/build/
+runtime/dist/
+runtime/ui/
+installer/output/
+installer/staging/
+*.gguf
+*.gguf.part
+
+# تصدير واجهة سطح المكتب (يُبنى، لا يُودَع)
+frontend/out/

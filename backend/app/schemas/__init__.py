@@ -43,6 +43,13 @@ from .entitlements import (
     InstallerDownloadResponse,
     SubscriptionStatusResponse,
 )
+from .runtime import (
+    InstallationSessionResponse,
+    ModelArtifactResponse,
+    RuntimeActivateRequest,
+    RuntimeActivationResponse,
+    RuntimeEntitlementResponse,
+)
 from .chat import (
     ChatMessageIn,
     ChatRequest,
@@ -65,6 +72,12 @@ __all__ = [
     "InstallerDownloadRequest",
     "InstallerDownloadResponse",
     "SubscriptionStatusResponse",
+    # الـRuntime وجلسات التركيب
+    "InstallationSessionResponse",
+    "ModelArtifactResponse",
+    "RuntimeActivateRequest",
+    "RuntimeActivationResponse",
+    "RuntimeEntitlementResponse",
     # المصادقة
     "LoginRequest",
     "LogoutResponse",

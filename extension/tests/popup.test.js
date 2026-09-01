@@ -53,13 +53,36 @@ function subscription(overrides = {}) {
 /**
  * موجّه طلبات مزيّف: مسار ← رد. أي مسار غير معرّف يُفشل الاختبار.
  *
+ * يفهم كذلك استطلاع الـRuntime على `127.0.0.1`: بلا `runtime` في الحالة
+ * يردّ برفض اتصال — وهو ما يراه المستخدم قبل أن يثبّت البرنامج.
+ *
  * ⚠️ **رمز HTTP يُقرأ من `status` فقط مع وجود `body`.** بدون هذا الشرط
  * يلتبس `status` الخاص بالعمل — `"active"` و`"expired"` في رد الاشتراك —
  * برمز الحالة، فيرفضه `Response` ويصير كل رد فشلَ شبكة صامتًا.
  */
-function routeFetch(routes) {
+function routeFetch(routes, runtime) {
   return vi.fn(async (url, options = {}) => {
-    const path = String(url).replace(/^https?:\/\/[^/]+/, "");
+    const raw = String(url);
+
+    // استطلاع الـRuntime المحلي.
+    if (raw.includes("127.0.0.1")) {
+      if (!runtime) throw new TypeError("Failed to fetch");
+      const path = raw.replace(/^https?:\/\/[^/]+/, "");
+      const handler = runtime[path];
+      if (!handler) throw new TypeError("Failed to fetch");
+      const result =
+        typeof handler === "function"
+          ? handler(options.body ? JSON.parse(options.body) : null)
+          : handler;
+      const envelope =
+        result !== null && typeof result === "object" && "body" in result;
+      return new Response(JSON.stringify(envelope ? result.body : result), {
+        status: envelope ? (result.status ?? 200) : 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const path = raw.replace(/^https?:\/\/[^/]+/, "");
     const route = routes[path];
     if (!route) throw new Error(`مسار غير متوقّع في الاختبار: ${path}`);
 
@@ -85,7 +108,7 @@ function routeFetch(routes) {
  * `module.ready` هو وعد الإقلاع الوحيد الذي تنتظره النافذة نفسها — لا
  * يُستدعى `boot()` هنا مرة ثانية.
  */
-async function mount(routes, { seed } = {}) {
+async function mount(routes, { seed, runtime } = {}) {
   await chrome.storage.local.remove([
     "accessToken",
     "refreshToken",
@@ -97,7 +120,7 @@ async function mount(routes, { seed } = {}) {
   ]);
   if (seed) await chrome.storage.local.set(seed);
   document.body.innerHTML = BODY;
-  const fetchMock = routeFetch(routes);
+  const fetchMock = routeFetch(routes, runtime);
   vi.stubGlobal("fetch", fetchMock);
 
   vi.resetModules();
@@ -144,11 +167,18 @@ async function tick() {
 
 /** ينتظر ظهور نصّ بعينه في شريط التنبيه. */
 async function waitForAlert(fragment) {
-  await vi.waitFor(() => expect(alertText()).toContain(fragment));
+  await vi.waitFor(
+    () => {
+      const text = alertText();
+      expect(text, "لم يظهر أي تنبيه بعد").not.toBeNull();
+      expect(text).toContain(fragment);
+    },
+    { timeout: 4000 },
+  );
 }
 
 /** يملأ نموذج الدخول ويرسله، وينتظر الشاشة التي يجب أن تليه. */
-async function signIn(expected, { email = ACCOUNT.email, password = "secret" } = {}) {
+async function signIn(expected, { email = ACCOUNT.email, password = "secret" } = {}) {  // eslint-disable-line
   document.getElementById("signin-email").value = email;
   document.getElementById("signin-password").value = password;
   document
@@ -374,6 +404,11 @@ describe("٥) التنزيل", () => {
       device: ACTIVE_DEVICE,
       requires_activation: false,
     }),
+    "/api/account/installation-session": {
+      token: "installation-session-token-value-000001",
+      expires_at: "2099-01-01T00:00:00Z",
+      expires_in_minutes: 15,
+    },
     "/api/account/installer/download-url": {
       download_url:
         "https://acct.blob.core.windows.net/releases/GovMindSetup.exe?sv=2022-11-02&sig=secret",
@@ -429,7 +464,7 @@ describe("٥) التنزيل", () => {
     expect(document.getElementById("progress-bar").style.inlineSize).toBe("25%");
   });
 
-  it("ينتقل إلى شاشة الاكتمال ويطلب فتح المثبّت يدويًا", async () => {
+  it("بعد اكتمال التنزيل يطلب فتح المثبّت وينتظر ظهور GovMind", async () => {
     await reachInstall();
     await click("install-start", "downloading");
 
@@ -437,11 +472,11 @@ describe("٥) التنزيل", () => {
     chrome.downloads.__finish(id);
     await tick();
 
-    expect(visibleScreen()).toBe("done");
-    expect(document.getElementById("done-file-name").textContent).toBe(
+    await vi.waitFor(() => expect(visibleScreen()).toBe("awaiting-runtime"));
+    expect(document.getElementById("awaiting-file-name").textContent).toBe(
       "GovMindSetup.exe",
     );
-    const text = document.getElementById("screen-done").textContent;
+    const text = document.getElementById("screen-awaiting-runtime").textContent;
     expect(text).toContain("افتح الملف");
     expect(text).toContain("نافذة ويندوز");
   });
@@ -453,9 +488,11 @@ describe("٥) التنزيل", () => {
     const id = chrome.downloads.__all()[0].id;
     chrome.downloads.__finish(id);
     await tick();
+    await vi.waitFor(() => expect(visibleScreen()).toBe("awaiting-runtime"));
 
-    document.getElementById("done-show").click();
+    document.getElementById("awaiting-show").click();
     expect(chrome.downloads.show).toHaveBeenCalledWith(id);
+    // `chrome.downloads.open` هو ما يشغّل الملف، ولا وجود له في الشيفرة.
     expect(chrome.downloads.open).toBeUndefined();
   });
 
@@ -623,5 +660,204 @@ describe("٧) المظهر — ثلاثة خيارات في الإضافة", () 
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("govagent.theme")).toBe("system");
+  });
+});
+
+/* ======================================================================== */
+describe("٨) تسليم رمز التركيب إلى GovMind Runtime", () => {
+  const READY = {
+    service: "govmind-runtime",
+    phase: "ready",
+    message: "GovMind جاهز للاستخدام.",
+    is_ready: true,
+    needs_activation: false,
+    progress: null,
+    downloaded_bytes: 0,
+    total_bytes: 0,
+    device_name: "حاسب ويندوز 11",
+    subscription_status: "active",
+  };
+
+  const AWAITING = {
+    ...READY,
+    phase: "awaiting_activation",
+    message: "بانتظار تفعيل هذا الجهاز من إضافة GovMind.",
+    is_ready: false,
+    needs_activation: true,
+  };
+
+  const DOWNLOADING = {
+    ...READY,
+    phase: "downloading_model",
+    message: "جارٍ تنزيل المودل…",
+    is_ready: false,
+    needs_activation: false,
+    progress: 42,
+    downloaded_bytes: 2 * 1024 * 1024 * 1024,
+    total_bytes: 5 * 1024 * 1024 * 1024,
+  };
+
+  const signedInRoutes = {
+    "/api/account/login": LOGIN_OK,
+    "/api/account/subscription": subscription({
+      device: ACTIVE_DEVICE,
+      requires_activation: false,
+    }),
+    "/api/account/devices/verify": subscription({
+      device: ACTIVE_DEVICE,
+      requires_activation: false,
+    }),
+  };
+
+  it("يكتشف Runtime جاهزًا عند الإقلاع ويتخطّى شاشة التنزيل", async () => {
+    // من ثبّت البرنامج فعلًا لا يُعرض له «نزّل المثبّت» في كل فتح.
+    await mount(signedInRoutes, { runtime: { "/health": READY } });
+    await click("welcome-next");
+    await signIn("installed");
+
+    expect(document.getElementById("installed-facts").textContent).toContain(
+      "حاسب ويندوز 11",
+    );
+  });
+
+  it("يفتح GovMind بلا أن يكتب المستخدم عنوانًا", async () => {
+    await mount(signedInRoutes, { runtime: { "/health": READY } });
+    await click("welcome-next");
+    await signIn("installed");
+
+    document.getElementById("installed-open").click();
+    await vi.waitFor(() =>
+      expect(chrome.tabs.create).toHaveBeenCalledWith({
+        url: "http://127.0.0.1:8765/",
+      }),
+    );
+  });
+
+  it("يسلّم رمز التركيب تلقائيًا حين يظهر Runtime ينتظر التفعيل", async () => {
+    let received = null;
+    let phase = AWAITING;
+
+    await mount(
+      { ...signedInRoutes, "/api/account/installation-session": {
+        token: "installation-session-token-value-000001",
+        expires_at: "2099-01-01T00:00:00Z",
+        expires_in_minutes: 15,
+      } },
+      {
+        runtime: {
+          "/health": () => phase,
+          "/activate": (body) => {
+            received = body;
+            phase = DOWNLOADING;
+            return DOWNLOADING;
+          },
+        },
+      },
+    );
+    await click("welcome-next");
+
+    // ⚠️ **بلا أي ضغطة**: Runtime ينتظر التفعيل، فتُصدر الإضافة رمزًا
+    // وتسلّمه تلقائيًا. الشرط صريح: لا ينسخ المستخدم رمزًا ولا يلصقه.
+    await vi.waitFor(() => expect(received).not.toBeNull(), { timeout: 4000 });
+    expect(received.token).toBe("installation-session-token-value-000001");
+
+    // ينتهي المسار عند «جارٍ التجهيز»: التفعيل مرحلة عابرة بين الشاشتين.
+    await vi.waitFor(() => expect(visibleScreen()).toBe("preparing-model"), {
+      timeout: 4000,
+    });
+  });
+
+  it("يعرض تقدّم تنزيل المودل بالعربية", async () => {
+    await mount(signedInRoutes, { runtime: { "/health": DOWNLOADING } });
+    await click("welcome-next");
+    await signIn("preparing-model");
+
+    expect(document.getElementById("preparing-message").textContent).toContain(
+      "جارٍ تنزيل المودل",
+    );
+    const label = document.getElementById("preparing-label").textContent;
+    expect(label).toContain("42٪");
+    expect(label).toContain("ج.ب");
+  });
+
+  it("⚠️ لا يعرض منفذًا ولا عنوانًا ولا رمزًا في أي شاشة", async () => {
+    await mount(signedInRoutes, { runtime: { "/health": DOWNLOADING } });
+    await click("welcome-next");
+    await signIn("preparing-model");
+
+    const text = document.body.textContent;
+    expect(text).not.toContain("127.0.0.1");
+    expect(text).not.toContain("8765");
+    expect(text).not.toContain("installation-session-token");
+    expect(text).not.toContain("llama");
+  });
+
+  it("يمحو رمز التركيب بعد التسليم", async () => {
+    let phase = AWAITING;
+    await mount(
+      { ...signedInRoutes, "/api/account/installation-session": {
+        token: "installation-session-token-value-000001",
+        expires_at: "2099-01-01T00:00:00Z",
+        expires_in_minutes: 15,
+      } },
+      {
+        runtime: {
+          "/health": () => phase,
+          "/activate": () => {
+            phase = DOWNLOADING;
+            return DOWNLOADING;
+          },
+        },
+      },
+    );
+    await click("welcome-next");
+    await vi.waitFor(() => expect(visibleScreen()).toBe("preparing-model"), {
+      timeout: 4000,
+    });
+
+    const stored = await chrome.storage.local.get("installToken");
+    expect(stored).toEqual({});
+  });
+
+  it("رفض التفعيل من الـRuntime يظهر برسالته العربية", async () => {
+    await mount(
+      { ...signedInRoutes, "/api/account/installation-session": {
+        token: "installation-session-token-value-000001",
+        expires_at: "2099-01-01T00:00:00Z",
+        expires_in_minutes: 15,
+      } },
+      {
+        runtime: {
+          "/health": AWAITING,
+          "/activate": {
+            status: 409,
+            body: { detail: "هذا الاشتراك مفعّل على جهاز آخر." },
+          },
+        },
+      },
+    );
+    await click("welcome-next");
+    await signIn();
+    await waitForAlert("جهاز آخر");
+  });
+
+  it("الخروج يمحو رمز التركيب", async () => {
+    await mount(
+      { ...signedInRoutes, "/api/account/installation-session": {
+        token: "installation-session-token-value-000001",
+        expires_at: "2099-01-01T00:00:00Z",
+        expires_in_minutes: 15,
+      } },
+      { runtime: null },
+    );
+    await click("welcome-next");
+    await signIn("install");
+    await click("install-start");
+
+    document.querySelector("[data-signout]").click();
+    await vi.waitFor(async () => {
+      const stored = await chrome.storage.local.get("installToken");
+      expect(stored).toEqual({});
+    });
   });
 });

@@ -23,6 +23,9 @@ const KEYS = {
   deviceId: "deviceId",
   deviceName: "deviceName",
   welcomeSeen: "welcomeSeen",
+  installToken: "installToken",
+  installTokenExpiresAt: "installTokenExpiresAt",
+  runtimePort: "runtimePort",
 };
 
 /** مفاتيح إصدارات سابقة لم يعد لها معنى، تُمسح عند الإقلاع. */
@@ -124,6 +127,61 @@ export async function updateAccount(account) {
  */
 export async function clearSession() {
   await remove([KEYS.token, KEYS.refreshToken, KEYS.expiresAt, KEYS.account]);
+  // رمز التركيب يخصّ جلسةً بعينها: تركه بعد الخروج يترك سرًّا صالحًا على
+  // جهاز قد يستعمله غير صاحبه.
+  await clearInstallToken();
+}
+
+/* -------------------------------------------------------------------------
+   رمز التركيب — لمرة واحدة، ولدقائق التركيب وحدها
+   ------------------------------------------------------------------------- */
+
+/**
+ * ⚠️ **أقصر ما يُحفظ في هذه الإضافة عمرًا.**
+ *
+ * يُحفظ لأن نافذة الإضافة تُغلق بمجرد أن يفقدها المستخدم التركيز — وهو ما
+ * يحدث حتمًا حين يفتح المثبّت — فلو بقي في الذاكرة وحدها لضاع في منتصف
+ * التركيب. ويُمحى فور نجاح التفعيل أو فشله أو انتهاء صلاحيته.
+ */
+export async function setInstallToken(token, expiresAt) {
+  await write({
+    [KEYS.installToken]: token,
+    [KEYS.installTokenExpiresAt]: expiresAt,
+  });
+}
+
+/** يعيد الرمز إن كان موجودًا **وصالحًا**، أو `null`. */
+export async function getInstallToken() {
+  const stored = await read([KEYS.installToken, KEYS.installTokenExpiresAt]);
+  const token = stored[KEYS.installToken];
+  if (!token) return null;
+
+  const expiresAt = Date.parse(stored[KEYS.installTokenExpiresAt] ?? "");
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    // منتهٍ: يُمحى بدل أن يُرسل فيُرفض.
+    await clearInstallToken();
+    return null;
+  }
+  return token;
+}
+
+export async function clearInstallToken() {
+  await remove([KEYS.installToken, KEYS.installTokenExpiresAt]);
+}
+
+/* -------------------------------------------------------------------------
+   منفذ الـRuntime المكتشَف
+   ------------------------------------------------------------------------- */
+
+/** يُحفظ ليُفتح GovMind مباشرة في الزيارات التالية بلا استطلاع كل المنافذ. */
+export async function setRuntimePort(port) {
+  await write({ [KEYS.runtimePort]: port });
+}
+
+export async function getRuntimePort() {
+  const stored = await read(KEYS.runtimePort);
+  const value = stored[KEYS.runtimePort];
+  return Number.isInteger(value) ? value : null;
 }
 
 /* -------------------------------------------------------------------------

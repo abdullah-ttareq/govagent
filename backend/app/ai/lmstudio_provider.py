@@ -70,6 +70,13 @@ class LMStudioModelProvider(ModelProvider):
 
     name = "lmstudio"
 
+    #: اسم المنتج كما يظهر **للمستخدم** في رسائل الخطأ.
+    #: يبدّله المزوّد الوارث فلا يرى عميل GovMind اسم LM Studio إطلاقًا.
+    PRODUCT_LABEL = "LM Studio"
+
+    #: بادئة متغيّرات البيئة كما تُذكر للمشغّل في رسائل الإعداد.
+    SETTINGS_PREFIX = "LM_STUDIO"
+
     def __init__(self, transport: Any = None) -> None:
         """Args:
         transport: ناقل httpx بديل — **للاختبارات وحدها**. يسمح باختبار
@@ -79,14 +86,35 @@ class LMStudioModelProvider(ModelProvider):
         """
         self._transport = transport
 
+    @classmethod
+    def _localize(cls, message: str) -> str:
+        """يستبدل اسم المنتج وبادئة الإعدادات في رسالة موجّهة للمستخدم.
+
+        **لماذا هنا لا في كل رسالة؟** الرسائل عشرون موضعًا، ونسيان واحد
+        منها يعني أن عميل GovMind يقرأ «LM Studio» — وهو ما يجب ألا يراه
+        بحال. المرور بنقطة واحدة يجعل النسيان مستحيلًا.
+
+        في المزوّد الأصل هذا استبدالٌ محايد: القيمتان هما نفسهما.
+        """
+        if cls.PRODUCT_LABEL == "LM Studio" and cls.SETTINGS_PREFIX == "LM_STUDIO":
+            return message
+        return message.replace("LM Studio", cls.PRODUCT_LABEL).replace(
+            "LM_STUDIO", cls.SETTINGS_PREFIX
+        )
+
     def generate(
         self, messages: list[ChatMessage], system_prompt: str
     ) -> ChatResult:
         conversation = ensure_conversation(messages)
-        config = self._read_settings()
-        payload = self._build_payload(config, conversation, system_prompt)
-        data = self._call_model(config, payload)
-        return ChatResult(reply=self._extract_reply(data), provider=self.name)
+        try:
+            config = self._read_settings()
+            payload = self._build_payload(config, conversation, system_prompt)
+            data = self._call_model(config, payload)
+            reply = self._extract_reply(data)
+        except ModelProviderError as exc:
+            # كل رسالة تخرج من هنا تمرّ بنقطة الترجمة الواحدة.
+            raise ModelProviderError(self._localize(str(exc))) from exc
+        return ChatResult(reply=reply, provider=self.name)
 
     # ------------------------------------------------------------------
     # الإعدادات

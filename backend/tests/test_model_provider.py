@@ -38,8 +38,15 @@ def test_unknown_provider_error_lists_supported_values():
         assert name in message
 
 
-def test_supported_providers_are_the_expected_four():
-    assert set(SUPPORTED_PROVIDERS) == {"mock", "oracle", "lmstudio", "local"}
+def test_supported_providers_are_the_expected_five():
+    """خمسة الآن بعد إضافة `llamacpp` — والأربعة السابقة **باقية كما هي**."""
+    assert set(SUPPORTED_PROVIDERS) == {
+        "mock",
+        "oracle",
+        "lmstudio",
+        "local",
+        "llamacpp",
+    }
 
 
 # ---------------------------------------------------------------------------

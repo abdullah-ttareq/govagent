@@ -30,7 +30,9 @@ from ..schemas.entitlements import (
     InstallerDownloadResponse,
     SubscriptionStatusResponse,
 )
+from ..schemas.runtime import InstallationSessionResponse
 from ..services import entitlement_service as entitlements
+from ..services import installation_session_service as sessions
 from ..services import installer_service
 from ..services.entitlement_service import (
     Account,
@@ -431,6 +433,49 @@ def revoke_device(activation_id: int, account: CurrentAccount) -> ActiveDeviceOu
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
         ) from exc
     return _to_device_out(device, current_hash=None)
+
+
+# ---------------------------------------------------------------------------
+# جلسة التركيب
+# ---------------------------------------------------------------------------
+@router.post(
+    "/installation-session",
+    response_model=InstallationSessionResponse,
+    summary="إصدار رمز تركيب لمرة واحدة",
+    responses={
+        403: {"description": "الاشتراك لا يسمح بالتركيب"},
+        503: {"description": "تعذّر الوصول إلى قاعدة البيانات"},
+    },
+)
+def create_installation_session(
+    account: CurrentAccount,
+) -> InstallationSessionResponse:
+    """يصدر رمزًا تسلّمه الإضافة إلى الـRuntime بعد التثبيت.
+
+    **لماذا رمز بدل هوية جهاز من الإضافة؟** لأن المثبَّت على ويندوز لا
+    يستطيع قراءة `chrome.storage.local`، ولأن هوية يولّدها المتصفح تموت
+    بتغيّر ملف تعريفه على جهاز لم يتغيّر. الرمز ينقل الثقة مرة واحدة،
+    ويولّد الـRuntime هويته بنفسه على الجهاز.
+
+    ⚠️ **الرمز يظهر مرة واحدة**: يُخزَّن مجزّأً، فلا سبيل إلى استرجاعه.
+    الإضافة تحفظه لدقائق التركيب ثم تمحوه.
+
+    **لا يُطلب تفعيل جهاز مسبق:** هذا المسار هو ما يسبق التفعيل.
+    """
+    try:
+        issued = sessions.issue_session(account)
+    except EntitlementError as exc:
+        raise _to_http(exc) from exc
+    except SupabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    return InstallationSessionResponse(
+        token=issued.token,
+        expires_at=issued.expires_at,
+        expires_in_minutes=settings.installation_token_ttl_minutes,
+    )
 
 
 # ---------------------------------------------------------------------------

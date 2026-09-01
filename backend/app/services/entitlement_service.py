@@ -314,6 +314,45 @@ def active_device(subscription_id: int) -> DeviceActivation | None:
     return _to_device(row) if row else None
 
 
+def find_activation_by_hash(
+    device_hash: str,
+) -> tuple[DeviceActivation, Subscription] | None:
+    """يجد التفعيل **الفعّال** المطابق لتجزئة سرّ الجهاز، مع اشتراكه.
+
+    هذه هي مصادقة الـRuntime: لا رمز مستخدم لديه، وإنما سرّ جهازه. السرّ
+    الخام لا يصل هنا — المستدعي يجزّئه بالمِلح أولًا.
+
+    يعيد ``None`` لتفعيل مبطَل أو غير موجود؛ **لا يُفرَّق بينهما**، فكلاهما
+    يعني للـRuntime «أعد التفعيل».
+    """
+    row = supabase.select_one(
+        "device_activations",
+        columns=(
+            "id,subscription_id,device_id_hash,device_name,"
+            "activated_at,last_seen_at,revoked_at"
+        ),
+        filters={
+            "device_id_hash": f"eq.{device_hash}",
+            "revoked_at": "is.null",
+        },
+    )
+    if row is None:
+        return None
+
+    device = _to_device(row)
+    sub_row = supabase.select_one(
+        "subscriptions",
+        columns="id,organization_id,status,seats,starts_at,expires_at",
+        filters={"id": f"eq.{device.subscription_id}"},
+    )
+    if sub_row is None:
+        # تفعيل يشير إلى اشتراك محذوف: حالة لا يُفترض وقوعها، وتُعامَل
+        # كغياب تفعيل لا كخطأ داخلي.
+        return None
+
+    return _touch_last_seen(device), _to_subscription(sub_row)
+
+
 def list_devices(subscription_id: int) -> list[DeviceActivation]:
     """يعيد سجل أجهزة الاشتراك كله — الفعّال والمبطل — للمسؤول."""
     rows = supabase.select(

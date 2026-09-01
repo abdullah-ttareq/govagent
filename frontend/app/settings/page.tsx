@@ -8,6 +8,7 @@ import Input from "@/components/ui/Input";
 import { NetworkError, OFFLINE_MESSAGE } from "@/lib/api";
 import {
   DEFAULT_SERVER_URL,
+  IS_DESKTOP,
   getServerUrl,
   hasStoredServerUrl,
   normalizeServerUrl,
@@ -131,6 +132,21 @@ export default function SettingsPage() {
 
       <h1 className="mt-6 text-xl font-bold">الإعدادات</h1>
 
+      {/*
+        ⚠️ **حقل رابط السيرفر يختفي في نسخة سطح المكتب.**
+        هناك تخدم الواجهةَ وGovMind Runtime عمليةٌ واحدة على الاسترجاع
+        المحلي، فالعنوان النسبي هو الصحيح دائمًا. عرضُ حقلٍ يستطيع العميل
+        أن يكسر به تطبيقه لا فائدة منه، والشرط صريح: لا يُدخل العميل
+        عنوانًا ولا منفذًا.
+      */}
+      {IS_DESKTOP ? (
+        <section className="mt-5 rounded-lg border border-border-subtle bg-surface p-5 sm:p-6">
+          <h2 className="text-lg font-bold">الاتصال</h2>
+          <p className="mt-2 text-sm text-muted">
+            يعمل GovMind على هذا الجهاز، ولا يحتاج إعداد أي عنوان.
+          </p>
+        </section>
+      ) : (
       <section className="mt-5 rounded-lg border border-border-subtle bg-surface p-5 sm:p-6">
         <h2 className="text-lg font-bold">رابط سيرفر الجهة</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
@@ -195,11 +211,14 @@ export default function SettingsPage() {
           </Alert>
         )}
       </section>
+      )}
 
-      <p className="mt-5 text-xs leading-relaxed text-muted">
-        لا تعرف العنوان؟ اطلبه من مسؤول النظام في جهتك. لا تُدخل هنا عنوان
-        سيرفر لا يخصّ جهتك.
-      </p>
+      {!IS_DESKTOP && (
+        <p className="mt-5 text-xs leading-relaxed text-muted">
+          لا تعرف العنوان؟ اطلبه من مسؤول النظام في جهتك. لا تُدخل هنا عنوان
+          سيرفر لا يخصّ جهتك.
+        </p>
+      )}
     </main>
   );
 }

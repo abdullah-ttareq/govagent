@@ -16,6 +16,7 @@ from . import (
     files,
     health,
     organizations,
+    runtime,
     users,
 )
 
@@ -37,5 +38,6 @@ api_router.include_router(files.router, responses=_API_ERRORS)
 api_router.include_router(audit.router, responses=_API_ERRORS)
 api_router.include_router(chat.router, responses=_API_ERRORS)
 api_router.include_router(entitlements.router, responses=_API_ERRORS)
+api_router.include_router(runtime.router, responses=_API_ERRORS)
 
 __all__ = ["api_router"]

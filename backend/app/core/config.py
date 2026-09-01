@@ -102,6 +102,18 @@ class Settings(BaseSettings):
     lm_studio_max_tokens: int = 1500
     lm_studio_temperature: float = 0.3
 
+    # ------------------------------------------------------------------
+    # llama.cpp — المودل داخل GovMind Runtime (بلا LM Studio)
+    # ------------------------------------------------------------------
+    # **يكتب الـRuntime العنوان بنفسه** بعد أن يحجز منفذًا حرًّا على
+    # الاسترجاع المحلي. فارغ يعني أن المحرّك لم يبدأ بعد، ويُرفض الطلب
+    # برسالة عربية بدل نداء عنوان لا وجود له.
+    llamacpp_base_url: str = ""
+    llamacpp_model: str = "govmind-local"
+    llamacpp_timeout_seconds: float = 300.0
+    llamacpp_max_tokens: int = 1500
+    llamacpp_temperature: float = 0.3
+
     # المتجهات (Embeddings) — mock يعمل محليًا بلا أي خدمة خارجية.
     embedding_provider: str = "mock"
     oci_embedding_model_id: str = ""
@@ -173,13 +185,45 @@ class Settings(BaseSettings):
     # تحمل مفتاح الحساب، ولا تخرج من الـBackend إلى أي عميل بأي حال.
     azure_storage_account: str = ""
     azure_storage_container: str = ""
-    azure_storage_blob_name: str = ""
     azure_storage_connection_string: str = ""
+
+    # مدوّنتان منفصلتان: المثبّت صغير والمودل بالجيجابايتات. حزمهما معًا
+    # يجعل كل تحديث صغير في الـRuntime يعيد تنزيل المودل كله.
+    azure_installer_blob_name: str = ""
+    azure_model_blob_name: str = ""
+
+    # بيانات التحقق من المودل. **بدونهما لا يُقبل المودل** مهما اكتمل
+    # تنزيله: ملف بحجم صحيح وتجزئة خاطئة ملفٌ تالف أو مستبدَل.
+    azure_model_sha256: str = ""
+    azure_model_size_bytes: int = 0
+
+    #: الاسم القديم من المرحلة الأولى. يبقى بديلًا لـAZURE_INSTALLER_BLOB_NAME
+    #: حتى لا ينكسر إعداد قائم، ولا يُستعمل إن ضُبط الاسم الجديد.
+    azure_storage_blob_name: str = ""
+
+    @property
+    def installer_blob_name(self) -> str:
+        """مدوّنة المثبّت، بالاسم الجديد أو القديم."""
+        return (
+            self.azure_installer_blob_name or self.azure_storage_blob_name or ""
+        ).strip()
+
+    @property
+    def model_blob_name(self) -> str:
+        return (self.azure_model_blob_name or "").strip()
 
     # عمر رابط التحميل المؤقّت (SAS) بالدقائق. قصير عمدًا: الرابط يمنح
     # حاملَه التحميل بلا هوية، فكل دقيقة زائدة نافذة تسريب زائدة. ١٥ دقيقة
     # تكفي لبدء تحميل ملف كبير، والإضافة تطلب رابطًا جديدًا عند الحاجة.
     download_link_ttl_minutes: int = 15
+
+    # ------------------------------------------------------------------
+    # جلسات التركيب — نقل الثقة من الإضافة إلى الـRuntime
+    # ------------------------------------------------------------------
+    # عمر رمز التركيب بالدقائق. **نافذة تركيب لا جلسة**: يكفي أن يعيش حتى
+    # ينزّل العميل المثبّت ويشغّله. الإطالة توسّع نافذة إساءة الاستعمال بلا
+    # فائدة، والإضافة تطلب رمزًا جديدًا متى لزم.
+    installation_token_ttl_minutes: int = 15
 
 
 settings = Settings()

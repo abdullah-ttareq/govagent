@@ -49,6 +49,12 @@ export function resetChrome() {
       },
     },
 
+    // `chrome.tabs.create` لا يحتاج صلاحية `tabs` — إنشاء تبويب مسموح
+    // بلا إذن، وقراءة محتواه هي الممنوعة. الإضافة لا تقرأ شيئًا.
+    tabs: {
+      create: vi.fn(async () => ({ id: 1 })),
+    },
+
     downloads: {
       /** يسجّل تنزيلًا جديدًا بحالة «جارٍ» وبلا بايتات بعد. */
       download: vi.fn((options, callback) => {

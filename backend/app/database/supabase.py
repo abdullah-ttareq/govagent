@@ -323,6 +323,47 @@ def delete(table: str, *, filters: dict[str, str]) -> list[dict[str, Any]]:
     return _request("DELETE", table, params=dict(filters))
 
 
+def rpc(function_name: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """ينادي دالة PostgreSQL عبر ``POST /rest/v1/rpc/<name>``.
+
+    **الطريق الوحيد إلى عملية ذرّية عبر PostgREST.** لا معاملة تمتدّ عبر
+    طلبين، فما يجب أن ينجح أو يفشل معًا يُكتب دالةً في القاعدة ويُنادى من
+    هنا. انظر ``redeem_installation_session``.
+
+    رسالة الخطأ من PostgreSQL تُمرَّر في الاستثناء ليصنّفها المستدعي، ولا
+    تصل المستخدم: طبقة الخدمة تترجمها إلى رسالة عربية.
+    """
+    client = get_client()
+    try:
+        response = client.post(f"/rpc/{function_name}", json=payload)
+    except httpx.TimeoutException as exc:
+        raise SupabaseError(
+            "انتهت مهلة الاتصال بـSupabase قبل وصول الرد. راجع الشبكة."
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise SupabaseError("تعذّر الوصول إلى Supabase.") from exc
+
+    if not response.is_success:
+        # رمز PostgreSQL ورسالته يحسمان نوع الفشل لطبقة الخدمة. لا مفاتيح
+        # هنا: جسم الرد من القاعدة لا من إعداد السيرفر.
+        code, message = "", ""
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                code = str(body.get("code") or "")
+                message = str(body.get("message") or "")
+        except Exception:
+            pass
+        raise SupabaseError(f"{code} {message}".strip() or _translate_status(response.status_code))
+
+    if not response.content:
+        return []
+    payload_out = response.json()
+    if payload_out is None:
+        return []
+    return payload_out if isinstance(payload_out, list) else [payload_out]
+
+
 def count(table: str, *, filters: dict[str, str] | None = None) -> int:
     """يعدّ الصفوف المطابقة بلا جلبها.
 

@@ -15,7 +15,8 @@
  *
  * @typedef {(
  *   "welcome" | "signin" | "not-provisioned" | "subscription-blocked" |
- *   "device-taken" | "activate" | "install" | "downloading" | "done"
+ *   "device-taken" | "activate" | "install" | "downloading" |
+ *   "awaiting-runtime" | "activating-device" | "preparing-model" | "installed"
  * )} StepId
  */
 export const STEPS = Object.freeze({
@@ -35,9 +36,34 @@ export const STEPS = Object.freeze({
   INSTALL: "install",
   /** شريط التقدّم أثناء التنزيل. */
   DOWNLOADING: "downloading",
-  /** انتهى التنزيل — افتح المثبّت. */
-  DONE: "done",
+  /**
+   * المثبّت نُزّل، وننتظر أن يفتحه المستخدم فيظهر الـRuntime.
+   *
+   * **حلّت محلّ شاشة «اكتمل التنزيل» المنفصلة.** الشاشتان كانتا تقولان
+   * الشيء نفسه — «افتح الملف ووافق على نافذة ويندوز» — والفرق أن هذه
+   * تنتظر النتيجة كذلك. شاشتان بالنصّ نفسه تربكان ولا تفيدان.
+   */
+  AWAITING_RUNTIME: "awaiting-runtime",
+  /** عُثر على الـRuntime، وجارٍ تسليمه رمز التركيب. */
+  ACTIVATING_DEVICE: "activating-device",
+  /** الـRuntime ينزّل المودل ويتحقق منه. */
+  PREPARING_MODEL: "preparing-model",
+  /** كل شيء جاهز — يمكن فتح GovMind. */
+  INSTALLED: "installed",
 });
+
+/**
+ * مراحل الـRuntime التي تعني «ما زال يجهّز».
+ *
+ * مصدرها `runtime/govmind_runtime/state.py` — القائمتان يجب أن تبقيا
+ * متطابقتين، ويحرس ذلك اختبار في `tests/steps.test.js`.
+ */
+export const RUNTIME_BUSY_PHASES = Object.freeze([
+  "activating",
+  "downloading_model",
+  "verifying_model",
+  "starting_model",
+]);
 
 /**
  * @typedef {object} FlowState
@@ -46,6 +72,8 @@ export const STEPS = Object.freeze({
  * @property {object|null} account ملف العمل، أو `null` إن لم يُربط الحساب بجهة.
  * @property {object|null} subscription رد `/api/account/subscription`.
  * @property {"idle"|"running"|"done"} download حالة تنزيل المثبّت.
+ * @property {object|null} runtime آخر حالة قرأتها الإضافة من `/health`.
+ * @property {boolean} handingOver هل يجري تسليم رمز التركيب الآن؟
  */
 
 /**
@@ -64,6 +92,8 @@ export function resolveStep(state = {}) {
     account = null,
     subscription = null,
     download = "idle",
+    runtime = null,
+    handingOver = false,
   } = state;
 
   // ١) بلا جلسة: ترحيب ثم دخول. الترحيب مرة واحدة — من رآه وسجّل خروجه
@@ -85,9 +115,23 @@ export function resolveStep(state = {}) {
   // ٦) لا جهاز مفعّلًا بعد، أو المفعّل ليس هذا الجهاز.
   if (subscription.requires_activation) return STEPS.ACTIVATE;
 
-  // ٧) جهاز مفعّل واشتراك سليم: التنزيل وحالاته.
+  // ٧) الـRuntime موجود على الجهاز: حالته تسبق كل ما يخصّ المثبّت.
+  //    من ثبّت البرنامج فعلًا لا يُعرض له «نزّل المثبّت» من جديد.
+  if (runtime) {
+    if (runtime.is_ready) return STEPS.INSTALLED;
+    if (handingOver || runtime.phase === "activating") {
+      return STEPS.ACTIVATING_DEVICE;
+    }
+    if (runtime.needs_activation) return STEPS.AWAITING_RUNTIME;
+    // ينزّل المودل أو يتحقق منه أو يجهّزه — كلها «جارٍ التجهيز».
+    return STEPS.PREPARING_MODEL;
+  }
+
+  // ٨) نُزّل المثبّت وننتظر أن يفتحه المستخدم فيظهر الـRuntime.
+  if (download === "done") return STEPS.AWAITING_RUNTIME;
+
+  // ٩) لا Runtime ولا تنزيل مكتمل: التنزيل وحالاته.
   if (download === "running") return STEPS.DOWNLOADING;
-  if (download === "done") return STEPS.DONE;
   return STEPS.INSTALL;
 }
 
@@ -112,7 +156,10 @@ export const STEP_TITLES = Object.freeze({
   [STEPS.ACTIVATE]: "تفعيل هذا الجهاز",
   [STEPS.INSTALL]: "تثبيت GovMind",
   [STEPS.DOWNLOADING]: "جارٍ التنزيل",
-  [STEPS.DONE]: "اكتمل التنزيل",
+  [STEPS.AWAITING_RUNTIME]: "بانتظار فتح المثبّت",
+  [STEPS.ACTIVATING_DEVICE]: "جارٍ تفعيل الجهاز",
+  [STEPS.PREPARING_MODEL]: "جارٍ تجهيز GovMind",
+  [STEPS.INSTALLED]: "GovMind جاهز",
 });
 
 /**
@@ -127,8 +174,11 @@ export const STEP_NUMBERS = Object.freeze({
   [STEPS.ACTIVATE]: 3,
   [STEPS.INSTALL]: 4,
   [STEPS.DOWNLOADING]: 4,
-  [STEPS.DONE]: 5,
+  [STEPS.AWAITING_RUNTIME]: 5,
+  [STEPS.ACTIVATING_DEVICE]: 6,
+  [STEPS.PREPARING_MODEL]: 6,
+  [STEPS.INSTALLED]: 7,
 });
 
 /** إجمالي خطوات المسار الناجح. */
-export const TOTAL_STEPS = 5;
+export const TOTAL_STEPS = 7;

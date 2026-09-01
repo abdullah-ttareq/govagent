@@ -38,7 +38,6 @@ SAS_VERSION = "2022-11-02"
 _REQUIRED_SETTINGS: tuple[tuple[str, str], ...] = (
     ("AZURE_STORAGE_ACCOUNT", "azure_storage_account"),
     ("AZURE_STORAGE_CONTAINER", "azure_storage_container"),
-    ("AZURE_STORAGE_BLOB_NAME", "azure_storage_blob_name"),
     ("AZURE_STORAGE_CONNECTION_STRING", "azure_storage_connection_string"),
 )
 
@@ -64,18 +63,36 @@ class DownloadLink:
     file_name: str
 
 
-def missing_settings() -> list[str]:
-    """يعيد أسماء متغيرات Azure الناقصة كما تظهر في .env."""
-    return [
+def missing_settings(*, for_model: bool = False) -> list[str]:
+    """يعيد أسماء متغيرات Azure الناقصة كما تظهر في .env.
+
+    Args:
+        for_model: يفحص إعداد **المودل** بدل المثبّت. المودل يحتاج فوق
+            الحساب والحاوية اسمَ مدوّنته وتجزئته وحجمه — بلا الأخيرين لا
+            يمكن التحقق من الملف، وملفٌ غير مُتحقَّق منه لا يُقبل.
+    """
+    missing = [
         env_name
         for env_name, field in _REQUIRED_SETTINGS
         if not (getattr(settings, field, "") or "").strip()
     ]
 
+    if for_model:
+        if not settings.model_blob_name:
+            missing.append("AZURE_MODEL_BLOB_NAME")
+        if not (settings.azure_model_sha256 or "").strip():
+            missing.append("AZURE_MODEL_SHA256")
+        if int(settings.azure_model_size_bytes or 0) <= 0:
+            missing.append("AZURE_MODEL_SIZE_BYTES")
+    elif not settings.installer_blob_name:
+        missing.append("AZURE_INSTALLER_BLOB_NAME")
 
-def is_configured() -> bool:
+    return missing
+
+
+def is_configured(*, for_model: bool = False) -> bool:
     """هل ضُبطت كل متغيرات Azure؟ لا يلمس الشبكة."""
-    return not missing_settings()
+    return not missing_settings(for_model=for_model)
 
 
 def _parse_connection_string(value: str) -> dict[str, str]:
@@ -146,8 +163,11 @@ def _sign(string_to_sign: str, account_key: str) -> str:
     return base64.b64encode(digest).decode("utf-8")
 
 
-def build_download_link(*, now: datetime | None = None) -> DownloadLink:
-    """يولّد رابط SAS للقراءة على مدوّنة المثبّت.
+def build_download_link(
+    *, blob_name: str | None = None, for_model: bool = False,
+    now: datetime | None = None,
+) -> DownloadLink:
+    """يولّد رابط SAS للقراءة على مدوّنة واحدة.
 
     **لا يفحص شيئًا عن المستخدم:** الاستحقاق تفحصه
     `entitlement_service.authorize_installer_download` قبل استدعاء هذه
@@ -156,16 +176,21 @@ def build_download_link(*, now: datetime | None = None) -> DownloadLink:
     Raises:
         InstallerNotConfiguredError: إذا كان إعداد Azure ناقصًا أو تالفًا.
     """
-    missing = missing_settings()
+    missing = missing_settings(for_model=for_model)
     if missing:
+        subject = "تنزيل المودل" if for_model else "تحميل المثبّت"
         raise InstallerNotConfiguredError(
-            "تحميل المثبّت غير مهيّأ على هذا السيرفر. المتغيرات الناقصة: "
+            f"{subject} غير مهيّأ على هذا السيرفر. المتغيرات الناقصة: "
             f"{'، '.join(missing)}."
         )
 
     account = settings.azure_storage_account.strip()
     container = settings.azure_storage_container.strip().strip("/")
-    blob_name = settings.azure_storage_blob_name.strip().lstrip("/")
+    target = (
+        blob_name
+        or (settings.model_blob_name if for_model else settings.installer_blob_name)
+    )
+    blob_name = target.strip().lstrip("/")
     account_key = _account_key()
 
     moment = (now or datetime.now(UTC)).astimezone(UTC)

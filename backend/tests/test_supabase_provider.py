@@ -614,8 +614,13 @@ def test_no_credential_is_committed_in_the_repository():
     """فحص شامل: لا ملف مصدري يحمل قيمة مفتاح حقيقية."""
     root = Path(__file__).resolve().parents[2]
     # الأنماط مركّبة من قطع حتى لا يطابق هذا الملف نفسه.
+    #
+    # ⚠️ `dGVzd` هي بداية ترميز Base64 لكلمة «test»، فأي مفتاح اختباري
+    # نصّه يبدأ بها يُستثنى. الاستثناء كان `dGVzdC` وحدها — وهو ترميز
+    # «test-» تحديدًا — فحجب مفاتيح اختبارية أخرى صالحة مثل `dGVzdA`
+    # («test»). الاستثناء يجب أن يصف الفئة لا عيّنة منها.
     suspicious = re.compile(
-        "(" + "Account" + r"Key=(?!dGVzdC)|" + "SUPABASE_SERVICE_ROLE" + r"_KEY\s*=\s*ey)",
+        "(" + "Account" + r"Key=(?!dGVzd)|" + "SUPABASE_SERVICE_ROLE" + r"_KEY\s*=\s*ey)",
         re.IGNORECASE,
     )
     checked = 0

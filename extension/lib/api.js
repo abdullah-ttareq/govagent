@@ -149,6 +149,22 @@ export function verifyDevice(token, deviceId) {
    ------------------------------------------------------------------------- */
 
 /**
+ * `POST /api/account/installation-session` — رمز تركيب لمرة واحدة.
+ *
+ * تطلبه الإضافة **قبل** التنزيل وتسلّمه إلى الـRuntime بعد التثبيت. هو
+ * ما ينقل الثقة من المتصفح إلى البرنامج المثبَّت: الـRuntime يولّد هوية
+ * الجهاز بنفسه، والإضافة لا تعرفها ولا تحتاجها.
+ *
+ * ⚠️ **يظهر مرة واحدة** ولا يمكن استرجاعه — يُخزَّن مجزّأً على السيرفر.
+ */
+export function requestInstallationSession(token) {
+  return apiRequest("/api/account/installation-session", {
+    method: "POST",
+    token,
+  });
+}
+
+/**
  * `POST /api/account/installer/download-url` — رابط SAS قصير العمر.
  *
  * ⚠️ **الرابط لا يُعرض للمستخدم ولا يُنسخ إلى الحافظة**: يُمرَّر مباشرة إلى
