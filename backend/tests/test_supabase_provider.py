@@ -455,6 +455,154 @@ def test_migration_ships_isolation_tests(migration_sql):
     assert migration_sql.count("raise exception") >= 8
 
 
+# ---------------------------------------------------------------------------
+# تنظيف صفوف الاختبار — انحدار على فشل حيّ وقع فعلًا
+# ---------------------------------------------------------------------------
+# التنفيذ الحيّ الأول للهجرة سقط عند التنظيف بـ:
+#
+#   ERROR 23503: update or delete on table "organizations" violates foreign
+#   key constraint "profiles_organization_id_fkey" on table "profiles"
+#
+# السبب: `profiles.organization_id` مفتاح أجنبي بـ`on delete restrict` عمدًا،
+# والتنظيف كان يحذف `organizations` أولًا معتمدًا على تتالٍ لا وجود له في هذا
+# المفتاح بالذات. الاختبارات أدناه تحرس **الحلّ** — ترتيب الحذف — وتحرس
+# **القيد** معًا، فلا يُصلَح الأول بإضعاف الثاني.
+
+
+@pytest.fixture(scope="module")
+def purge_body(migration_sql: str) -> str:
+    """جسم دالة `govmind_purge_rls_fixtures` وحده."""
+    marker = "create or replace function public.govmind_purge_rls_fixtures()"
+    assert marker in migration_sql, "دالة تنظيف صفوف الاختبار مفقودة"
+    body = migration_sql.split(marker, 1)[1]
+    return body.split("$purge$;", 1)[0]
+
+
+def test_restrict_constraint_is_not_weakened(migration_sql):
+    """**القيد لم يُمسّ.** إصلاح الترتيب لا يكون بتحويله إلى cascade.
+
+    `on delete restrict` هنا يمنع حذف جهة ما زال فيها موظفون — وهو سلوك
+    مقصود يحمي بيانات إنتاج، لا عقبة أمام سكربت اختبار.
+    """
+    line = next(
+        line
+        for line in migration_sql.splitlines()
+        if "organization_id" in line and "references public.organizations" in line
+        and "not null" in line
+    )
+    assert "on delete restrict" in line
+
+
+def test_purge_deletes_children_before_parents(purge_body):
+    """ترتيب الحذف من الابن إلى الأب — جوهر الإصلاح."""
+    order = [
+        "public.file_chunks",
+        "public.files",
+        "public.messages",
+        "public.conversations",
+        "public.audit_logs",
+        "public.device_activations",
+        "public.subscriptions",
+        "public.organization_members",
+        "public.profiles",
+        "public.organizations",
+        "auth.users",
+    ]
+    positions = []
+    for table in order:
+        marker = f"delete from {table}"
+        assert marker in purge_body, f"التنظيف لا يشمل {table}"
+        positions.append(purge_body.index(marker))
+
+    assert positions == sorted(positions), (
+        "ترتيب الحذف مكسور: كل جدول يجب أن يُحذف قبل من يشير إليه"
+    )
+
+
+def test_profiles_are_deleted_before_organizations(purge_body):
+    """الحالة التي فشلت حيًّا، منصوصًا عليها وحدها."""
+    assert purge_body.index("delete from public.profiles") < purge_body.index(
+        "delete from public.organizations"
+    )
+
+
+def test_auth_users_are_cleaned_last_and_guarded(purge_body):
+    """حسابات auth تُحذف، وبشرطين معًا فلا يمكن أن يُمسّ حساب حقيقي."""
+    tail = purge_body[purge_body.index("delete from auth.users") :]
+    assert "id = any (test_users)" in tail
+    assert "email like 'rls-%@govmind.test'" in tail
+
+
+def test_fixture_identifiers_are_fixed_not_random(migration_sql):
+    """معرّفات ثابتة: بقايا محاولة فاشلة يجب أن تبقى قابلة للتمييز والحذف.
+
+    معرّف عشوائي يضيع مع المتغيّر الذي حمله، فلا يستطيع تنفيذ لاحق تنظيفه،
+    ويصطدم الزرع بخطأ تفرّد على `slug` أو البريد.
+    """
+    assert "gen_random_uuid()" not in migration_sql.replace(
+        "`gen_random_uuid()`", ""
+    )
+    for identifier in (
+        "00000000-0000-4000-8000-0000000a0001",
+        "00000000-0000-4000-8000-0000000a0002",
+        "00000000-0000-4000-8000-0000000b0001",
+    ):
+        assert identifier in migration_sql
+
+
+def test_migration_purges_before_seeding(migration_sql):
+    """التنظيف يسبق الزرع كذلك، وإلا لم يكن الملف قابلًا لإعادة التنفيذ."""
+    tests_block = migration_sql.split("$isolation_tests$", 1)[1]
+    first_purge = tests_block.index("perform public.govmind_purge_rls_fixtures()")
+    first_seed = tests_block.index("insert into public.organizations")
+    assert first_purge < first_seed
+
+
+def test_migration_has_a_cleanup_regression_block(migration_sql):
+    """كتلة تشهد على نجاح التنظيف من **خارجه**، بعد انتهائه."""
+    assert "$cleanup_regression$" in migration_sql
+    block = migration_sql.split("$cleanup_regression$", 1)[1]
+    # تتحقق من بقاء القيد فعّالًا، ومن خلوّ الجداول بعد التنظيف.
+    assert "foreign_key_violation" in block
+    assert "بقي % صف اختبار بعد التنظيف" in block
+
+
+def test_purge_helper_is_dropped_after_use(migration_sql):
+    """أداة هجرة لا جزء من المخطط: لا تبقى في القاعدة دالة تحذف صفوفًا."""
+    assert (
+        "drop function if exists public.govmind_purge_rls_fixtures()" in migration_sql
+    )
+
+
+def test_migration_detects_a_previous_partial_run(migration_sql):
+    """فحص أوّلي يقول للمشغّل هل تراجعت المحاولة السابقة أم خلّفت أثرًا."""
+    assert "$preflight$" in migration_sql
+    block = migration_sql.split("$preflight$", 1)[1]
+    assert "to_regclass" in block
+    # لا يغيّر شيئًا — يقرأ ويطبع فقط.
+    for statement in ("delete ", "insert ", "update ", "drop "):
+        assert statement not in block.split("$preflight$")[0].lower()
+
+
+def test_migration_ddl_is_rerunnable(migration_sql):
+    """كل DDL تحديثي: إعادة التنفيذ بعد فشل لا تكسر شيئًا."""
+    creates = [
+        line.strip()
+        for line in migration_sql.splitlines()
+        if line.strip().startswith("create table ")
+        or line.strip().startswith("create index ")
+        or line.strip().startswith("create unique index ")
+    ]
+    assert creates
+    for line in creates:
+        assert "if not exists" in line, line
+
+    # كل سياسة تُحذف قبل إنشائها.
+    assert migration_sql.count("drop policy if exists") == migration_sql.count(
+        "create policy"
+    )
+
+
 def test_migration_contains_no_secret(migration_sql):
     """لا مفتاح ولا سلسلة اتصال ولا رمز في ملف يُودَع في المستودع."""
     lowered = migration_sql.lower()

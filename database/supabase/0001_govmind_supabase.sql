@@ -43,11 +43,54 @@
 
 
 -- ----------------------------------------------------------------------------
--- ٠) الإضافات
+-- ٠) فحص أوّلي: هل سبق تنفيذ هذا الملف؟ وهل تراجع؟
 -- ----------------------------------------------------------------------------
--- pgcrypto لـgen_random_uuid() في الاختبارات أسفل الملف. متاحة افتراضيًا على
--- Supabase؛ السطر موجود ليعمل الملف على قاعدة PostgreSQL عادية كذلك.
-create extension if not exists pgcrypto;
+-- **الملف كله قابل لإعادة التنفيذ.** كل `create` بـ`if not exists`، وكل
+-- سياسة تُحذف قبل إنشائها، وكل دالة `create or replace`. تشغيله مرة ثانية
+-- لا يكسر شيئًا ولا يمسّ أي بيانات إنتاج.
+--
+-- هذه الكتلة **لا تغيّر شيئًا**؛ تطبع فقط ما تجده حتى يعرف المُشغّل هل
+-- تراجعت المحاولة السابقة كاملةً أم بقيت منها آثار. محرّر Supabase ينفّذ
+-- النصّ كله في معاملة ضمنية واحدة، فالخطأ في أي سطر يتراجع بالجميع — لكن
+-- الفحص هنا لا يفترض ذلك، بل يقيسه.
+--
+-- ⚠️ **بقايا الاختبارات — إن وُجدت — تُنظَّف في القسم ٧ قبل الزرع من جديد**،
+-- ولا يُحذف أي صف خارج النطاق المعرَّف بمعرّفات ثابتة معلومة.
+
+do $preflight$
+declare
+  tables_exist boolean;
+  leftover_orgs integer := 0;
+  leftover_users integer := 0;
+begin
+  tables_exist := to_regclass('public.organizations') is not null;
+
+  if not tables_exist then
+    raise notice 'GovMind: تنفيذ أول — لا جداول سابقة.';
+    return;
+  end if;
+
+  -- تُقرأ داخل الشرط عمدًا: plpgsql لا يحلّل الجملة إلا عند تنفيذها، فلا
+  -- تفشل الكتلة على قاعدة لم تُنشأ فيها الجداول بعد.
+  select count(*) into leftover_orgs
+  from public.organizations
+  where slug in ('rls-test-org-a', 'rls-test-org-b');
+
+  select count(*) into leftover_users
+  from auth.users
+  where email like 'rls-%@govmind.test';
+
+  raise notice 'GovMind: الجداول موجودة — هذا التنفيذ تحديثي (idempotent).';
+
+  if leftover_orgs > 0 or leftover_users > 0 then
+    raise notice
+      'GovMind: بقايا من تنفيذ سابق لم يكتمل (% جهة اختبار، % حساب اختبار). ستُنظَّف قبل الزرع.',
+      leftover_orgs, leftover_users;
+  else
+    raise notice 'GovMind: لا بقايا اختبار — المحاولة السابقة تراجعت بالكامل.';
+  end if;
+end
+$preflight$;
 
 
 -- ----------------------------------------------------------------------------
@@ -645,17 +688,103 @@ grant all on all sequences in schema public to service_role;
 -- `set local role authenticated` مع `request.jwt.claims` — وهو المسار نفسه
 -- الذي يسلكه طلب حقيقي عبر PostgREST، فما يُقاس هنا هو ما سيراه العميل
 -- فعلًا. ثم تحذف كل ما زرعته فلا يبقى في القاعدة أثر.
+
+
+-- ----------------------------------------------------------------------------
+-- ٧-٠) معرّفات ثابتة لصفوف الاختبار + دالة التنظيف
+-- ----------------------------------------------------------------------------
+-- **لماذا معرّفات ثابتة لا `gen_random_uuid()`؟** لأن التنظيف يجب أن يعمل
+-- في تنفيذٍ **لاحق** كذلك، لا في التنفيذ الذي زرع الصفوف وحده. معرّف عشوائي
+-- يضيع مع المتغيّر الذي حمله، فبقايا محاولة فاشلة تصير غير قابلة للتمييز
+-- ولا للحذف، وتمنع الزرع من جديد بخطأ تفرّد على `slug` أو البريد.
 --
--- الحذف في النهاية يتم بعد `reset role` بصلاحيات المُنفِّذ، ويمرّ عبر
--- `on delete cascade` من الجهتين.
+-- الأنماط أدناه لا تشبه معرّفًا حقيقيًا ولا بريدًا حقيقيًا: أصفار ونطاق
+-- ‎.test‎ المحجوز. ومع ذلك يشترط الحذف **الشرطين معًا** (المعرّف والبريد)
+-- على `auth.users`، فلا يمكن أن يمسّ حسابًا حقيقيًا بحال.
+--
+-- ⚠️ **ترتيب الحذف من الابن إلى الأب، وهو ما فشل قبل هذا الإصلاح.**
+-- `profiles.organization_id` مفتاح أجنبي بـ`on delete restrict` عمدًا —
+-- جهةٌ فيها موظفون لا تُحذف بالخطأ — فحذف `organizations` أولًا يرفع
+-- `23503`. **القيد سليم ولم يُمسّ؛ الخطأ كان في ترتيب الحذف لا في القيد.**
+-- بقية المفاتيح `on delete cascade`، لكن الحذف الصريح لكل جدول يبقى أوضح
+-- وأصلب: لا يعتمد على سلوك متتالٍ قد يتغيّر مع تغيّر المخطط.
+
+create or replace function public.govmind_purge_rls_fixtures()
+returns void
+language plpgsql
+as $purge$
+declare
+  --: حسابات الاختبار الثلاثة. ثابتة عبر كل تنفيذ.
+  test_users constant uuid[] := array[
+    '00000000-0000-4000-8000-0000000a0001',
+    '00000000-0000-4000-8000-0000000a0002',
+    '00000000-0000-4000-8000-0000000b0001'
+  ]::uuid[];
+  --: جهتا الاختبار، بمعرّف نصي لا يلتبس بجهة حقيقية.
+  test_slugs constant text[] := array['rls-test-org-a', 'rls-test-org-b'];
+  test_orgs  bigint[];
+begin
+  select coalesce(array_agg(id), '{}'::bigint[]) into test_orgs
+  from public.organizations
+  where slug = any (test_slugs);
+
+  -- ١) أبناء الملفات والمحادثات
+  delete from public.file_chunks
+   where organization_id = any (test_orgs) or user_id = any (test_users);
+
+  delete from public.files
+   where organization_id = any (test_orgs) or user_id = any (test_users);
+
+  delete from public.messages
+   where organization_id = any (test_orgs) or user_id = any (test_users);
+
+  delete from public.conversations
+   where organization_id = any (test_orgs) or user_id = any (test_users);
+
+  -- ٢) السجلّات المرتبطة بالجهة
+  delete from public.audit_logs
+   where organization_id = any (test_orgs) or user_id = any (test_users);
+
+  -- ٣) الأجهزة قبل الاشتراكات — الأجهزة أبناؤها
+  delete from public.device_activations
+   where subscription_id in (
+     select id from public.subscriptions where organization_id = any (test_orgs)
+   );
+
+  delete from public.subscriptions
+   where organization_id = any (test_orgs);
+
+  -- ٤) العضويات قبل الملفات الشخصية — العضوية تشير إلى الملف
+  delete from public.organization_members
+   where organization_id = any (test_orgs) or user_id = any (test_users);
+
+  -- ٥) **الملفات الشخصية قبل الجهات** — هنا كان الفشل.
+  delete from public.profiles
+   where id = any (test_users) or organization_id = any (test_orgs);
+
+  -- ٦) الجهات، وقد خلت من كل ما يشير إليها
+  delete from public.organizations
+   where id = any (test_orgs);
+
+  -- ٧) حسابات auth أخيرًا. **شرطان معًا** حتى يستحيل مسّ حساب حقيقي.
+  delete from auth.users
+   where id = any (test_users)
+     and email like 'rls-%@govmind.test';
+end
+$purge$;
+
+comment on function public.govmind_purge_rls_fixtures() is
+  'تحذف صفوف اختبارات العزل وحدها، من الابن إلى الأب. مؤقتة: تُحذف في آخر الملف.';
+
 
 do $isolation_tests$
 declare
   org_a       bigint;
   org_b       bigint;
-  admin_a     uuid := gen_random_uuid();
-  employee_a  uuid := gen_random_uuid();
-  admin_b     uuid := gen_random_uuid();
+  --: ثابتة لا عشوائية — انظر تعليق دالة التنظيف أعلاه.
+  admin_a     constant uuid := '00000000-0000-4000-8000-0000000a0001';
+  employee_a  constant uuid := '00000000-0000-4000-8000-0000000a0002';
+  admin_b     constant uuid := '00000000-0000-4000-8000-0000000b0001';
   sub_a       bigint;
   sub_b       bigint;
   conv_a      bigint;
@@ -664,6 +793,11 @@ declare
   raised      boolean;
 begin
   raise notice 'GovMind: بدء اختبارات العزل...';
+
+  -- **تنظيف قبل الزرع، لا بعده وحده.** محاولة سابقة توقّفت في منتصفها قد
+  -- تكون خلّفت صفوفًا تمنع الزرع بخطأ تفرّد. هذا يجعل الملف قابلًا لإعادة
+  -- التنفيذ بعد أي فشل.
+  perform public.govmind_purge_rls_fixtures();
 
   -- ---------------------------------------------------------------------
   -- التجهيز — بصلاحيات المُنفِّذ (كما يفعل الـBackend بـservice_role)
@@ -928,12 +1062,116 @@ begin
   -- ---------------------------------------------------------------------
   -- التنظيف — لا يبقى أثر للاختبارات في القاعدة
   -- ---------------------------------------------------------------------
-  delete from public.organizations where id in (org_a, org_b);
-  delete from auth.users where id in (admin_a, employee_a, admin_b);
+  -- `reset role` تمّت في آخر الاختبار ٨، وتُعاد هنا صراحة: الحذف يجب أن يجري
+  -- بصلاحيات المُنفِّذ لا بدور `authenticated` الذي تمنعه السياسات.
+  reset role;
+
+  -- الترتيب من الابن إلى الأب داخل الدالة — انظر تعليقها.
+  perform public.govmind_purge_rls_fixtures();
 
   raise notice 'GovMind: اجتازت اختبارات العزل الثمانية جميعها ✔';
 end
 $isolation_tests$;
+
+
+-- ----------------------------------------------------------------------------
+-- ٧-٩) اختبار انحدار: التنظيف نفسه لا يفشل ولا يترك أثرًا
+-- ----------------------------------------------------------------------------
+-- **لماذا كتلة منفصلة؟** لأن الكتلة السابقة تنتهي بالتنظيف، فلا تستطيع أن
+-- تشهد على نتيجته من داخلها. هذه تقيس القاعدة **بعد** انتهائها.
+--
+-- ما تثبته تحديدًا — وهو ما انكسر في التنفيذ الحيّ الأول:
+--
+-- ١) **دورة زرع/تنظيف كاملة تمرّ بلا `23503`.** تزرع الكتلة جهة وملفًا
+--    شخصيًا يشيران إلى بعضهما بالمفتاح ذي `on delete restrict`، ثم تنظّف.
+--    لو عاد أحدهم إلى حذف `organizations` قبل `profiles` لفشل هذا هنا.
+-- ٢) **لا يبقى صف اختبار واحد** في أيٍّ من الجداول العشرة ولا في `auth.users`.
+--
+-- الفشل يرفع استثناءً فتتراجع الهجرة كلها، كبقية الاختبارات.
+
+do $cleanup_regression$
+declare
+  probe_user constant uuid := '00000000-0000-4000-8000-0000000a0001';
+  probe_org  bigint;
+  remaining  integer;
+begin
+  -- ------------------------------------------------------------------
+  -- ١) دورة كاملة تُجبر المفتاح المقيَّد على الظهور
+  -- ------------------------------------------------------------------
+  insert into public.organizations (name, slug)
+  values ('جهة فحص التنظيف', 'rls-test-org-a') returning id into probe_org;
+
+  insert into auth.users (id, email) values (probe_user, 'rls-probe@govmind.test');
+
+  insert into public.profiles (id, organization_id, email, full_name, role)
+  values (probe_user, probe_org, 'rls-probe@govmind.test', 'حساب فحص', 'admin');
+
+  -- الحذف المباشر للجهة **يجب** أن يفشل: هذا هو القيد الذي نحميه، والتأكد
+  -- من بقائه فعّالًا يمنع «إصلاحًا» لاحقًا يحوّله إلى cascade ليمرّ التنظيف.
+  begin
+    delete from public.organizations where id = probe_org;
+    raise exception
+      'خلل: حُذفت جهة وفيها ملف شخصي — قيد profiles_organization_id_fkey لم يعد RESTRICT';
+  exception
+    when foreign_key_violation then
+      null;  -- المتوقّع تمامًا
+  end;
+
+  -- وبالترتيب الصحيح يمرّ التنظيف بلا خطأ. هذه هي الحالة التي فشلت حيًّا.
+  perform public.govmind_purge_rls_fixtures();
+
+  -- ------------------------------------------------------------------
+  -- ٢) لا أثر باقٍ — الجداول العشرة و auth.users
+  -- ------------------------------------------------------------------
+  select
+    (select count(*) from public.organizations
+      where slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.profiles
+      where email like 'rls-%@govmind.test')
+  + (select count(*) from public.organization_members m
+      join public.profiles p on p.id = m.user_id
+      where p.email like 'rls-%@govmind.test')
+  + (select count(*) from public.subscriptions s
+      join public.organizations o on o.id = s.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.device_activations d
+      join public.subscriptions s on s.id = d.subscription_id
+      join public.organizations o on o.id = s.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.conversations c
+      join public.organizations o on o.id = c.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.messages m
+      join public.organizations o on o.id = m.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.files f
+      join public.organizations o on o.id = f.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.file_chunks k
+      join public.organizations o on o.id = k.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from public.audit_logs a
+      join public.organizations o on o.id = a.organization_id
+      where o.slug in ('rls-test-org-a', 'rls-test-org-b'))
+  + (select count(*) from auth.users
+      where email like 'rls-%@govmind.test')
+  into remaining;
+
+  if remaining <> 0 then
+    raise exception 'خلل: بقي % صف اختبار بعد التنظيف', remaining;
+  end if;
+
+  raise notice 'GovMind: اجتاز اختبار انحدار التنظيف — لا صفوف باقية ✔';
+end
+$cleanup_regression$;
+
+
+-- ----------------------------------------------------------------------------
+-- ٧-١٠) إسقاط دالة التنظيف
+-- ----------------------------------------------------------------------------
+-- **مؤقتة عمدًا:** أداة هجرة لا جزء من المخطط. بقاؤها يترك في القاعدة دالة
+-- تحذف صفوفًا، ولا داعي لها بعد انتهاء الاختبارات.
+drop function if exists public.govmind_purge_rls_fixtures();
 
 
 -- ============================================================================
