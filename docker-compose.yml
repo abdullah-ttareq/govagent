@@ -9,6 +9,11 @@
 #
 # الوضع الافتراضي (MODEL_PROVIDER=mock و RETRIEVAL_PROVIDER=memory) يعمل
 # بالكامل بلا Oracle وبلا أي بيانات اعتماد.
+#
+# مع MODEL_PROVIDER=lmstudio: الحاوية لا ترى 127.0.0.1 الخاص بالجهاز المضيف،
+# فاضبط في .env — لهذه الحالة وحدها:
+#   LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+# ومن يشغّل الـBackend مباشرة بلا Docker يترك الافتراضي 127.0.0.1 كما هو.
 
 services:
   backend:

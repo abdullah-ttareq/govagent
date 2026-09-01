@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ModelProviderName = Literal["mock", "oracle", "local"]
+ModelProviderName = Literal["mock", "oracle", "lmstudio", "local"]
 
 
 class Settings(BaseSettings):
@@ -75,6 +75,32 @@ class Settings(BaseSettings):
     oci_timeout_seconds: float = 60.0
     oci_max_tokens: int = 1500
     oci_temperature: float = 0.3
+
+    # LM Studio — مودل محلي على جهاز الجهة بواجهة متوافقة مع OpenAI.
+    # القيم الافتراضية تعمل مباشرة مع تثبيت LM Studio قياسي على ويندوز، فلا
+    # يحتاج المشغّل إلى ضبط شيء غير MODEL_PROVIDER=lmstudio.
+    # داخل Docker يصبح العنوان غالبًا: http://host.docker.internal:1234/v1
+    lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
+    lm_studio_model: str = "google/gemma-4-e4b"
+
+    # **اختياري عمدًا:** الخادم محلي على 127.0.0.1 ولا يطلب هوية. يُملأ فقط
+    # إن وُضع وسيط (Proxy) أمام LM Studio يشترط ترويسة Authorization.
+    lm_studio_api_key: str = ""
+
+    # ضبط الاستدعاء — **القيمتان أدناه مقيستان لا مقدَّرتان.**
+    #
+    # المهلة: التوليد المحلي أبطأ كثيرًا من خدمة سحابية. سؤال إداري متوسط
+    # استغرق ٢٦٢ ثانية عبر المسار الكامل على جهاز اختبار، فمهلة ١٢٠ ثانية
+    # تقطع إجابة سليمة في منتصفها. ٣٠٠ تترك هامشًا معقولًا.
+    lm_studio_timeout_seconds: float = 300.0
+
+    # سقف طول الإجابة. **١٥٠٠ لا ٥١٢:** مودلات الاستدلال (Reasoning) — ومنها
+    # google/gemma-4-e4b — تستهلك مئات الرموز في تفكير داخلي **لا يظهر
+    # للمستخدم** قبل أن تكتب حرفًا من الإجابة. قياس فعلي: ٥٠٩ رموز استدلال
+    # قبل أول حرف، فالسقف ٥١٢ أعاد إجابة **فارغة**، و١٥٠٠ أعاد ردًا كاملًا.
+    # خفضها يوفّر وقتًا على مودل غير استدلالي، ويكسر المحادثة على استدلالي.
+    lm_studio_max_tokens: int = 1500
+    lm_studio_temperature: float = 0.3
 
     # المتجهات (Embeddings) — mock يعمل محليًا بلا أي خدمة خارجية.
     embedding_provider: str = "mock"

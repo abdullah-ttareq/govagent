@@ -317,9 +317,20 @@ body {
     position: absolute;
     /* تفتح لأعلى: مكانها المعتاد أسفل الشريط الجانبي، فالأسفل خارج الشاشة. */
     inset-block-end: calc(100% + var(--space-2));
-    inset-inline-end: 0;
+
+    /* ⚠️ `inset-inline-start` لا `inset-inline-end`.
+       في RTL جهة `inline-end` هي **اليسار**، فتثبيتها على 0 كان يلصق الحافة
+       اليسرى للقائمة بالزرّ ويمدّها **يمينًا** — والزرّ نفسه ملاصق للحافة
+       اليمنى للشاشة، فكان أكثر من مئة بكسل من القائمة يخرج خارج إطار العرض
+       فتختفي الأسماء والأيقونات ولا يبقى ظاهرًا إلا أول عنصر في كل صف.
+       بـ`inline-start` تُحاذي القائمة بداية الزرّ وتنمو نحو **داخل** الصفحة،
+       فتبقى كاملة داخل الشاشة في الشريط الجانبي وفي درج الجوال معًا. */
+    inset-inline-start: 0;
+
     z-index: 30;
     min-inline-size: 10rem;
+    /* حدٌّ أخير على الشاشات الضيّقة جدًا: القائمة تضيق ولا تخرج أبدًا. */
+    max-inline-size: calc(100vw - 2 * var(--space-4));
     padding: var(--space-1);
     background-color: var(--surface);
     border: 1px solid var(--border-subtle);
@@ -348,8 +359,15 @@ body {
     transition: background-color 0.15s ease;
   }
 
+  /* الاسم يأخذ ما بقي، والأيقونتان لا تنكمشان: صفٌّ ضيّق يقصّ النص لا
+     الأيقونة، فيبقى لكل خيار رمزٌ يميّزه وعلامةُ صحٍّ مقروءة. */
   .gv-theme__item > span {
     flex: 1;
+    min-inline-size: 0;
+  }
+
+  .gv-theme__item > svg {
+    flex-shrink: 0;
   }
 
   .gv-theme__item:hover {

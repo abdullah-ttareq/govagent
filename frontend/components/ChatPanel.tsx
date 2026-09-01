@@ -67,6 +67,19 @@ export default function ChatPanel({
   const uploadControllers = useRef(new Map<string, AbortController>());
   /** عمق السحب: dragleave يُطلَق عند المرور فوق أي ابن، فلا يكفي عدّاد منطقي. */
   const dragDepth = useRef(0);
+  /**
+   * معرّف المحادثة التي أنشأتها هذه اللوحة للتوّ.
+   *
+   * **يمنع إعادة تحميلٍ يمحو مصادر أول رد.** أول رسالة تفتح محادثة جديدة،
+   * فيتغيّر `conversationId` من `null` إلى معرّفها، فيُشغّل أثرُ التبديل
+   * `loadHistory` فيستبدل الرسائل بنسخة السيرفر — ونسخة السيرفر **لا تحفظ
+   * `sources`**، فتختفي شريحة المصادر من أول رد وحده بينما تبقى في كل رد
+   * بعده (لأن المحادثة لا تتبدّل عندها فلا إعادة تحميل).
+   *
+   * الحالة المحلية هنا **أحدث** من نسخة السيرفر وتطابقها نصًّا، فتخطّي
+   * التحميل مرة واحدة لا يفقد شيئًا ويحفظ المصادر.
+   */
+  const selfCreatedRef = useRef<number | null>(null);
 
   const handleExpiredSession = useCallback(
     (caught: unknown) => {
@@ -110,6 +123,14 @@ export default function ChatPanel({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages([]);
       setFailure(null);
+      return;
+    }
+
+    // المحادثة التي أنشأتها هذه اللوحة للتوّ: الرسائل معروضة أصلًا ومعها
+    // مصادرها. تُستهلك العلامة مرة واحدة، فالعودة إلى المحادثة لاحقًا
+    // تُحمّلها من السيرفر كأي محادثة أخرى.
+    if (selfCreatedRef.current === conversationId) {
+      selfCreatedRef.current = null;
       return;
     }
 
@@ -283,6 +304,8 @@ export default function ChatPanel({
 
         if (conversationId === null && result.conversation_id !== null) {
           // أول رسالة فتحت محادثة جديدة في السيرفر: تُتبنّى هنا ويُحدَّث الشريط.
+          // تُرفع العلامة **قبل** التبنّي حتى يقرأها الأثر الناتج عنه.
+          selfCreatedRef.current = result.conversation_id;
           onConversationCreated(result.conversation_id);
         } else {
           onMessageSent();

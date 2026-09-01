@@ -5,7 +5,6 @@ import {
   applyTheme,
   getThemeServerSnapshot,
   getThemeSnapshot,
-  resolveTheme,
   setThemeChoice,
   type ThemeChoice,
 } from "@/lib/theme";
@@ -33,17 +32,6 @@ function MoonIcon() {
   );
 }
 
-function AutoIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="size-4">
-      <path
-        fill="currentColor"
-        d="M3.5 4.25c0-.97.78-1.75 1.75-1.75h9.5c.97 0 1.75.78 1.75 1.75v7.5c0 .97-.78 1.75-1.75 1.75h-3.5v1.75h2a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h2V13.5h-3.5a1.75 1.75 0 0 1-1.75-1.75zM5.25 4a.25.25 0 0 0-.25.25v7.5c0 .14.11.25.25.25h9.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25z"
-      />
-    </svg>
-  );
-}
-
 const OPTIONS: {
   value: ThemeChoice;
   label: string;
@@ -51,15 +39,16 @@ const OPTIONS: {
 }[] = [
   { value: "light", label: "فاتح", Icon: SunIcon },
   { value: "dark", label: "داكن", Icon: MoonIcon },
-  { value: "system", label: "تلقائي", Icon: AutoIcon },
 ];
 
 /**
- * مبدّل المظهر — زرّ أيقونة صغير يفتح قائمة بثلاثة خيارات.
+ * مبدّل المظهر — زرّ أيقونة صغير يفتح قائمة بخيارين: فاتح وداكن.
  *
- * **زرّ وقائمة لا ثلاثة أزرار ظاهرة:** ثلاثة أزرار تأخذ عرضًا يفوق أهميتها
- * في زاوية أو في شريط جانبي، والمظهر إعدادٌ يُضبط مرة ثم يُنسى. الزرّ يعرض
- * أيقونة الوضع الفعّال، فتبقى الحالة مقروءة بلا فتح القائمة.
+ * **زرّ وقائمة لا زرّان ظاهران:** المظهر إعدادٌ يُضبط مرة ثم يُنسى، فلا
+ * يستحق عرضًا دائمًا في زاوية أو في شريط جانبي. الزرّ يعرض أيقونة الوضع
+ * الفعّال — شمسًا في الفاتح وقمرًا في الداكن — فتبقى الحالة مقروءة بلا فتح.
+ *
+ * ⚠️ خيار «تلقائي» أُزيل من الموقع وبقي في الإضافة وحدها — انظر `lib/theme`.
  */
 export default function ThemeToggle({ className = "" }: { className?: string }) {
   // `localStorage` مخزن خارج React: يُقرأ هكذا لا بـ`useState` في `useEffect`.
@@ -73,22 +62,13 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
 
-  const active = OPTIONS.find((option) => option.value === choice) ?? OPTIONS[2];
+  const active = OPTIONS.find((option) => option.value === choice) ?? OPTIONS[0];
 
   useEffect(() => {
-    // **يُطبَّق في كل مرة يستقرّ فيها الاختيار، لا في حالة «تلقائي» وحدها.**
-    // أثناء الإماهة يعطي `useSyncExternalStore` قيمة السيرفر («تلقائي») ثم
-    // يعيد الرسم بقيمة المتصفح؛ لو لم نطبّق إلا في «تلقائي» لبقي وضع الجهاز
-    // مطبَّقًا بعد أن استقرّ الاختيار على «فاتح» أو «داكن».
-    applyTheme(resolveTheme(choice));
-
-    // «تلقائي» يعني المتابعة الحيّة: تغيير إعداد النظام والصفحة مفتوحة يجب
-    // أن ينعكس فورًا، لا عند التحديث التالي.
-    if (choice !== "system" || !window.matchMedia) return;
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const sync = () => applyTheme(query.matches ? "dark" : "light");
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
+    // يُطبَّق كلما استقرّ الاختيار: أثناء الإماهة يعطي `useSyncExternalStore`
+    // قيمة السيرفر (الافتراضي) ثم يعيد الرسم بقيمة المتصفح، فلولا التطبيق
+    // هنا لبقيت الصفحة على الوضع الافتراضي بعد أن استقرّ الاختيار على غيره.
+    applyTheme(choice);
   }, [choice]);
 
   // القائمة تُغلق بالنقر خارجها وبـEscape، كأي طبقة عائمة في الواجهة.

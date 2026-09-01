@@ -38,8 +38,8 @@ def test_unknown_provider_error_lists_supported_values():
         assert name in message
 
 
-def test_supported_providers_are_the_expected_three():
-    assert set(SUPPORTED_PROVIDERS) == {"mock", "oracle", "local"}
+def test_supported_providers_are_the_expected_four():
+    assert set(SUPPORTED_PROVIDERS) == {"mock", "oracle", "lmstudio", "local"}
 
 
 # ---------------------------------------------------------------------------

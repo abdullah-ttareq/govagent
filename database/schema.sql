@@ -230,7 +230,7 @@ CREATE TABLE model_settings (
         REFERENCES organizations (id),
     CONSTRAINT uq_model_settings_org UNIQUE (organization_id),
     CONSTRAINT ck_model_settings_provider
-        CHECK (provider IN ('mock', 'oracle', 'local'))
+        CHECK (provider IN ('mock', 'oracle', 'lmstudio', 'local'))
 );
 
 

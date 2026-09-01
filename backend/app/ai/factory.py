@@ -2,6 +2,7 @@
 
 from ..core.config import settings
 from .base import ModelProvider, ModelProviderError
+from .lmstudio_provider import LMStudioModelProvider
 from .local_provider import LocalModelProvider
 from .mock_provider import MockModelProvider
 from .oracle_provider import OracleModelProvider
@@ -9,6 +10,7 @@ from .oracle_provider import OracleModelProvider
 _PROVIDERS: dict[str, type[ModelProvider]] = {
     "mock": MockModelProvider,
     "oracle": OracleModelProvider,
+    "lmstudio": LMStudioModelProvider,
     "local": LocalModelProvider,
 }
 
