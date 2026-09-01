@@ -1,7 +1,13 @@
-"""نقطة تشغيل GovMind Runtime.
+"""نقطة تشغيل GovMind Runtime — بوضعين.
 
-يُشغَّل خدمةً في الخلفية بعد التثبيت، **بلا نافذة طرفية**. يبدأ الخادم
-المحلي فورًا حتى تجده الإضافة، ثم يجهّز المودل في خيط منفصل: الإضافة
+* **بلا وسائط** ⇒ وضع الخدمة: يشغّل الخادم المحلي ولا يفتح شيئًا مرئيًا.
+* **`--open`** ⇒ وضع الفتح: يجد الخدمة أو يبدأها، ثم يفتح واجهة GovMind
+  في المتصفح، ثم ينتهي. هذا ما تستعمله الاختصارات وخانة ما بعد التثبيت.
+
+**لماذا وضعان؟** كانت الاختصارات تشير إلى الخادم مباشرة، وهو بلا نافذة،
+فلا يحدث للمستخدم شيء مرئي حين يضغطها — انظر `opener.py`.
+
+الخادم يبدأ فورًا حتى تجده الإضافة، ثم يجهّز المودل في خيط منفصل: الإضافة
 تستطلع `/health` وهي تنتظر، فحجب الخيط الرئيسي دقائق يجعلها تظنّ أن
 الـRuntime لم يبدأ.
 """
@@ -20,7 +26,9 @@ import uvicorn
 from .api import LocalApi
 from .config import RuntimeConfig, load_config
 from .llama_supervisor import find_free_port
+from .opener import find_running_port, open_ui
 from .service import RuntimeService
+from .single_instance import SingleInstance
 
 logger = logging.getLogger("govmind_runtime")
 
@@ -63,9 +71,44 @@ def entitlement_loop(service: RuntimeService, stop: threading.Event) -> None:
             logger.exception("فشل تحديث الاستحقاق الدوري")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    """يوزّع على الوضعين حسب الوسائط."""
+    args = list(sys.argv[1:] if argv is None else argv)
+
+    if "--open" in args:
+        config = load_config()
+        configure_logging(config)
+        return open_ui()
+
+    return run_service()
+
+
+def run_service() -> int:
+    """وضع الخدمة: خادم محلي واحد لا أكثر."""
     config = load_config()
     configure_logging(config)
+
+    # ⚠️ **حارس النسخة الواحدة قبل أي شيء آخر.**
+    # بدونه كان كل تشغيل يبدأ خادمًا على المنفذ التالي، فتراكمت على جهاز
+    # اختبار خمس نسخ تستمع معًا لأن المستخدم ضغط الاختصار مرارًا ولم ير
+    # شيئًا. المنفذ البديل لحالة «منفذ حجزه برنامج آخر» لا لحالة «GovMind
+    # يعمل أصلًا».
+    guard = SingleInstance()
+    if guard.already_running:
+        running = find_running_port()
+        logger.info(
+            "نسخة أخرى من GovMind تعمل بالفعل%s؛ لن تبدأ نسخة ثانية.",
+            f" (منفذ {running})" if running else "",
+        )
+        return 0
+
+    try:
+        return _serve(config)
+    finally:
+        guard.release()
+
+
+def _serve(config: RuntimeConfig) -> int:
 
     # منفذ حرّ ابتداءً من المفضَّل: تثبيت آخر أو برنامج غيره قد يحجزه،
     # والفشل بـ«المنفذ مشغول» يترك العميل بلا GovMind بلا سبب مفهوم.

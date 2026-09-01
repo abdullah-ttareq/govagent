@@ -127,14 +127,22 @@ Name: "{commonappdata}\{#AppName}\models"; Permissions: users-modify
 Name: "{commonappdata}\{#AppName}\logs"; Permissions: users-modify
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#RuntimeExe}"; Comment: "فتح GovMind"
+; ⚠️ **`--open` لا الملف التنفيذي وحده.** الملف بلا وسائط خادمٌ بلا نافذة:
+; يبدأ ويحجز منفذًا ويجلس صامتًا، فلا يرى المستخدم شيئًا حين يضغط الاختصار.
+; هذا هو العطل الذي ظهر في أول تثبيت فعلي — انظر govmind_runtime\opener.py.
+Name: "{group}\{#AppName}"; Filename: "{app}\{#RuntimeExe}"; \
+    Parameters: "--open"; Comment: "فتح GovMind"
 Name: "{group}\إلغاء تثبيت {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#RuntimeExe}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#RuntimeExe}"; \
+    Parameters: "--open"; Tasks: desktopicon
 
 [Run]
 ; ⚠️ `nowait` و `runasoriginaluser`: الخدمة تعمل بحساب المستخدم لا كمسؤول.
 ; و`postinstall` يجعلها اختيارًا يراه المستخدم لا تشغيلًا صامتًا.
-Filename: "{app}\{#RuntimeExe}"; Description: "{cm:LaunchAfterInstall}"; \
+; ⚠️ `--open` كذلك: خانة «تشغيل GovMind الآن» يجب أن **تفتح الواجهة**، لا
+; أن تبدأ خدمة صامتة ثم تترك المستخدم أمام شاشة لم يتغيّر فيها شيء.
+Filename: "{app}\{#RuntimeExe}"; Parameters: "--open"; \
+    Description: "{cm:LaunchAfterInstall}"; \
     Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]

@@ -27,6 +27,97 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# ربط عمر العملية الابنة بعمر الـRuntime
+# ---------------------------------------------------------------------------
+# `stop()` ينهي `llama-server` عند الإيقاف **النظيف**. أما إنهاء الـRuntime
+# قسرًا (taskkill /F، أو انهيار) فيترك العملية الابنة حيّة: رُصد على جهاز
+# اختبار `llama-server.exe` يتيم يحجز **٢٫٦ ج.ب** بعد موت أبيه.
+#
+# Job Object بعلم `KILL_ON_JOB_CLOSE` يجعل النواة تقتل كل ما في المهمة
+# حين يُغلق مقبضها — ويُغلق حتمًا بموت العملية مهما كانت طريقة الموت.
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_JobObjectExtendedLimitInformation = 9
+
+
+def _create_kill_on_close_job():
+    """ينشئ Job Object يقتل أعضاءه عند إغلاقه، أو ``None`` إن تعذّر."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_ulonglong) for name in (
+                "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
+            )]
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.POINTER(ctypes.c_ulong)),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(
+            job,
+            _JobObjectExtendedLimitInformation,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        ):
+            kernel32.CloseHandle(job)
+            return None
+        return job
+    except Exception:  # pragma: no cover - يستحيل على ويندوز سليم
+        logger.debug("تعذّر إنشاء Job Object لربط عمر المحرّك.", exc_info=False)
+        return None
+
+
+def _assign_to_job(job, pid: int) -> None:
+    """يضمّ عملية إلى المهمة. فشلها لا يمنع التشغيل."""
+    if not job or sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        # PROCESS_SET_QUOTA | PROCESS_TERMINATE
+        handle = kernel32.OpenProcess(0x0100 | 0x0001, False, pid)
+        if not handle:
+            return
+        try:
+            kernel32.AssignProcessToJobObject(job, handle)
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:  # pragma: no cover
+        logger.debug("تعذّر ضمّ محرّك المودل إلى Job Object.", exc_info=False)
+
 #: أقصى انتظار لجاهزية المودل. تحميل مودل بالجيجابايتات من قرص بطيء قد
 #: يستغرق دقائق، و**الإعلان عن الجاهزية قبل اكتمال التحميل** يعطي المستخدم
 #: واجهة تفشل أول سؤال.
@@ -89,6 +180,8 @@ class LlamaSupervisor:
         self._port: int | None = None
         self._lock = threading.Lock()
         self._last_error: str | None = None
+        # يُنشأ مرة ويبقى مفتوحًا ما دام الـRuntime حيًّا.
+        self._job = _create_kill_on_close_job()
 
     # -- الحالة ---------------------------------------------------------
     @property
@@ -179,6 +272,9 @@ class LlamaSupervisor:
                 ) from exc
 
             self._port = port
+            # ⚠️ **قبل الانتظار لا بعده**: لو مات الـRuntime أثناء تحميل
+            # المودل لبقيت العملية الابنة تلتهم الذاكرة بلا أب.
+            _assign_to_job(self._job, self._process.pid)
 
         try:
             self._wait_until_ready(port, ready_timeout)
