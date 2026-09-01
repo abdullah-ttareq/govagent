@@ -455,6 +455,19 @@ _STORES: dict[str, type[ConversationStore]] = {
     "oracle": OracleConversationStore,
 }
 
+#: يُستورد كسولًا: وحدة Supabase تقرأ إعداداتها وتفتح عميل HTTP عند الاستخدام
+#: لا عند الاستيراد، فيبقى المشروع يقلع بلا Supabase أصلًا — كما يقلع بلا
+#: Oracle. لهذا لا يظهر الصنف في ``_STORES`` مباشرة.
+def _supabase_store() -> type[ConversationStore]:
+    from .supabase_stores import SupabaseConversationStore
+
+    return SupabaseConversationStore
+
+
+#: القيم المقبولة لـDATA_STORE.
+SUPPORTED_DATA_STORES: tuple[str, ...] = tuple(sorted({*_STORES, "supabase"}))
+
+
 
 def get_conversation_store(name: str | None = None) -> ConversationStore:
     """يعيد مخزن المحادثات المفعّل.
@@ -463,9 +476,11 @@ def get_conversation_store(name: str | None = None) -> ConversationStore:
         ConversationStoreError: إذا كان الاسم غير مدعوم.
     """
     store_name = (name or settings.data_store or "memory").strip().lower()
+    if store_name == "supabase":
+        return _supabase_store()()
     store_class = _STORES.get(store_name)
     if store_class is None:
-        supported = "، ".join(sorted(_STORES))
+        supported = "، ".join(SUPPORTED_DATA_STORES)
         raise ConversationStoreError(
             f"DATA_STORE='{store_name}' غير مدعوم. القيم المدعومة: {supported}."
         )

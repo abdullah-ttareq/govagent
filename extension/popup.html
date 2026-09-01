@@ -12,158 +12,241 @@
   <body>
     <header class="header">
       <div class="brand">
-        <img src="icons/icon-32.png" alt="" width="20" height="20" />
-        <h1>GovMind</h1>
-      </div>
-      <div class="header-actions">
-        <div class="theme" id="theme-root">
-          <button
-            id="theme-trigger"
-            class="theme__trigger"
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded="false"
-            aria-controls="theme-menu"
-            aria-label="المظهر"
-            title="المظهر"
-          >
-            <svg id="theme-icon" viewBox="0 0 20 20" aria-hidden="true"></svg>
-          </button>
-
-          <div id="theme-menu" class="theme__menu" role="menu" hidden>
-            <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="light">
-              فاتح
-            </button>
-            <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="dark">
-              داكن
-            </button>
-            <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="system">
-              تلقائي
-            </button>
-          </div>
+        <img src="icons/icon-32.png" alt="" width="22" height="22" />
+        <div>
+          <h1>GovMind</h1>
+          <p class="brand__tagline">مساعد الجهات الحكومية</p>
         </div>
+      </div>
 
+      <div class="theme" id="theme-root">
         <button
-          id="new-chat"
-          class="link-button"
+          id="theme-trigger"
+          class="theme__trigger"
           type="button"
-          title="يبدأ محادثة جديدة ويترك السابقة محفوظة على السيرفر"
-          hidden
-        >
-          محادثة جديدة
-        </button>
-        <button
-          id="settings-toggle"
-          class="link-button"
-          type="button"
+          aria-haspopup="menu"
           aria-expanded="false"
-          aria-controls="settings"
+          aria-controls="theme-menu"
+          aria-label="المظهر"
+          title="المظهر"
         >
-          الإعدادات
+          <svg id="theme-icon" viewBox="0 0 20 20" aria-hidden="true"></svg>
         </button>
+
+        <!-- ثلاثة خيارات هنا وخياران في الموقع. الإضافة نافذة صغيرة تُفتح
+             لدقائق داخل متصفح للمستخدم فيه إعداد مظهر أصلًا، فمتابعة
+             الجهاز فيها تصرّف متوقَّع لا مفاجئ. -->
+        <div id="theme-menu" class="theme__menu" role="menu" hidden>
+          <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="light">
+            فاتح
+          </button>
+          <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="dark">
+            داكن
+          </button>
+          <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="system">
+            تلقائي
+          </button>
+        </div>
       </div>
     </header>
 
-    <section id="settings" class="settings" aria-label="الإعدادات" hidden>
-      <label for="api-base-url">رابط سيرفر الجهة (API Base URL)</label>
-      <input
-        id="api-base-url"
-        type="url"
-        dir="ltr"
-        placeholder="http://localhost:8000"
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <button id="save-settings" class="secondary-button" type="button">
-        حفظ الرابط
-      </button>
-      <p id="settings-status" class="hint" role="status"></p>
-    </section>
+    <!-- مؤشّر الخطوات. يُخفى في الشاشات المانعة: ليست خطوة في المسار. -->
+    <div class="steps" id="steps" aria-hidden="true">
+      <span class="steps__dot" data-step="1"></span>
+      <span class="steps__dot" data-step="2"></span>
+      <span class="steps__dot" data-step="3"></span>
+      <span class="steps__dot" data-step="4"></span>
+      <span class="steps__dot" data-step="5"></span>
+    </div>
 
-    <!-- ثلاث حالات يتبدّل بينها الجسم، وارتفاع النافذة ثابت في كلها. -->
-    <main class="main">
-      <section id="view-loading" class="view view-centered">
-        <p class="muted" role="status">جارٍ التحقق من الجلسة…</p>
+    <main class="main" id="main">
+      <!-- ١) ترحيب -->
+      <section class="screen" id="screen-welcome" hidden>
+        <h2 class="screen__title">مرحبًا بك في GovMind</h2>
+        <p class="screen__lead">
+          مساعد ذكاء اصطناعي يعمل <strong>على جهازك</strong>. ثلاث خطوات
+          وينتهي التجهيز.
+        </p>
+        <ol class="checklist">
+          <li>سجّل الدخول بحساب جهتك.</li>
+          <li>فعّل هذا الجهاز على اشتراكك.</li>
+          <li>نزّل GovMind وثبّته.</li>
+        </ol>
+        <p class="note">
+          الاشتراك يعمل على <strong>جهاز واحد</strong>. لتغيير الجهاز راجع
+          مسؤول النظام في جهتك.
+        </p>
+        <button class="button button--primary" id="welcome-next" type="button">
+          التالي
+        </button>
       </section>
 
-      <section id="view-login" class="view" hidden>
-        <p id="login-notice" class="notice" role="status" hidden></p>
+      <!-- ٢) تسجيل الدخول -->
+      <section class="screen" id="screen-signin" hidden>
+        <h2 class="screen__title">تسجيل الدخول</h2>
+        <!-- ⚠️ حقلان فقط. **لا حقل لرابط سيرفر ولا لمفتاح API** — العنوان
+             ثابت في `config.js` وقت البناء. -->
+        <form class="form" id="signin-form">
+          <label class="field">
+            <span class="field__label">البريد الإلكتروني</span>
+            <input
+              class="field__input"
+              id="signin-email"
+              type="email"
+              name="email"
+              autocomplete="username"
+              required
+              dir="ltr"
+            />
+          </label>
 
-        <form id="login-form" class="login-form" novalidate>
-          <h2 class="view-title">تسجيل الدخول</h2>
+          <label class="field">
+            <span class="field__label">كلمة المرور</span>
+            <input
+              class="field__input"
+              id="signin-password"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              required
+              dir="ltr"
+            />
+          </label>
 
-          <label for="email">البريد الإلكتروني</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            dir="ltr"
-            autocomplete="username"
-            spellcheck="false"
-            required
-          />
-
-          <label for="password">كلمة المرور</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-          />
-
-          <div id="login-error" class="banner" role="alert" hidden>
-            <p id="login-error-text" class="banner-text"></p>
-            <button
-              id="login-error-action"
-              class="banner-button"
-              type="button"
-              hidden
-            ></button>
-          </div>
-
-          <button id="login-submit" class="primary-button" type="submit">
+          <button class="button button--primary" id="signin-submit" type="submit">
             دخول
           </button>
         </form>
       </section>
 
-      <section id="view-chat" class="view view-chat" hidden>
-        <div
-          id="log"
-          class="log"
-          role="log"
-          aria-live="polite"
-          aria-label="سجل المحادثة"
-          tabindex="0"
-        ></div>
+      <!-- ٣) حساب بلا جهة -->
+      <section class="screen" id="screen-not-provisioned" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">الحساب غير مرتبط بجهة</h2>
+        <p class="screen__lead" id="not-provisioned-message">
+          حسابك صحيح، لكنه غير مرتبط بأي جهة في النظام بعد. راجع مسؤول
+          النظام في جهتك لإكمال تسجيلك.
+        </p>
+        <button class="button button--ghost" data-signout type="button">
+          تسجيل الخروج
+        </button>
+      </section>
 
-        <div id="banner" class="banner" role="alert" hidden>
-          <p id="banner-text" class="banner-text"></p>
-          <button id="banner-action" class="banner-button" type="button" hidden>
+      <!-- ٤) اشتراك لا يسمح -->
+      <section class="screen" id="screen-subscription-blocked" hidden>
+        <div class="status status--danger" aria-hidden="true">×</div>
+        <h2 class="screen__title" id="blocked-title">الاشتراك لا يسمح بالاستخدام</h2>
+        <p class="screen__lead" id="blocked-message"></p>
+        <dl class="facts" id="blocked-facts"></dl>
+        <div class="actions">
+          <button class="button button--secondary" data-refresh type="button">
+            تحديث الحالة
+          </button>
+          <button class="button button--ghost" data-signout type="button">
+            تسجيل الخروج
           </button>
         </div>
+      </section>
 
-        <form id="composer" class="composer">
-          <label for="message" class="sr-only">رسالتك</label>
-          <textarea
-            id="message"
-            rows="2"
-            placeholder="اكتب رسالتك… (Enter للإرسال، Shift+Enter لسطر جديد)"
-            maxlength="8000"
-            aria-describedby="composer-hint"
-          ></textarea>
-          <button id="send" class="primary-button" type="submit">إرسال</button>
-          <p id="composer-hint" class="sr-only">
-            اضغط Enter للإرسال، وShift مع Enter لسطر جديد.
-          </p>
-        </form>
+      <!-- ٥) مفعّل على جهاز آخر -->
+      <section class="screen" id="screen-device-taken" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">الحساب مفعّل على جهاز آخر</h2>
+        <p class="screen__lead" id="device-taken-message"></p>
+        <dl class="facts" id="device-taken-facts"></dl>
+        <p class="note">
+          كل اشتراك يعمل على <strong>جهاز واحد</strong>. لنقل الاشتراك إلى
+          هذا الجهاز، اطلب من مسؤول النظام في جهتك إلغاء تفعيل الجهاز
+          السابق، ثم اضغط «تحديث الحالة».
+        </p>
+        <div class="actions">
+          <button class="button button--primary" data-refresh type="button">
+            تحديث الحالة
+          </button>
+          <button class="button button--ghost" data-signout type="button">
+            تسجيل الخروج
+          </button>
+        </div>
+      </section>
+
+      <!-- ٦) تفعيل هذا الجهاز -->
+      <section class="screen" id="screen-activate" hidden>
+        <h2 class="screen__title">تفعيل هذا الجهاز</h2>
+        <p class="screen__lead">
+          سيُربط اشتراكك بهذا الجهاز. يمكن للمسؤول إلغاء الربط لاحقًا إن
+          احتجت تغيير الجهاز.
+        </p>
+        <dl class="facts" id="activate-facts"></dl>
+        <button class="button button--primary" id="activate-submit" type="button">
+          فعّل هذا الجهاز
+        </button>
+      </section>
+
+      <!-- ٧) تثبيت -->
+      <section class="screen" id="screen-install" hidden>
+        <div class="status status--ok" aria-hidden="true">✓</div>
+        <h2 class="screen__title">جهازك مفعّل</h2>
+        <p class="screen__lead">
+          نزّل مثبّت GovMind وشغّله لإكمال التثبيت على هذا الجهاز.
+        </p>
+        <dl class="facts" id="install-facts"></dl>
+        <button class="button button--primary" id="install-start" type="button">
+          ثبّت GovMind
+        </button>
+      </section>
+
+      <!-- ٨) جارٍ التنزيل -->
+      <section class="screen" id="screen-downloading" hidden>
+        <h2 class="screen__title">جارٍ تنزيل GovMind</h2>
+        <div
+          class="progress"
+          role="progressbar"
+          id="progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="progress__bar" id="progress-bar"></div>
+        </div>
+        <p class="progress__label" id="progress-label">يبدأ التنزيل…</p>
+        <button class="button button--ghost" id="download-cancel" type="button">
+          إلغاء التنزيل
+        </button>
+      </section>
+
+      <!-- ٩) اكتمل -->
+      <section class="screen" id="screen-done" hidden>
+        <div class="status status--ok" aria-hidden="true">✓</div>
+        <h2 class="screen__title">اكتمل التنزيل</h2>
+        <!-- ⚠️ الإضافة **لا تشغّل** المثبّت. الخطوة الأخيرة فعل المستخدم. -->
+        <ol class="checklist">
+          <li>افتح الملف المنزَّل <strong id="done-file-name"></strong>.</li>
+          <li>وافق على نافذة ويندوز التي تطلب الإذن بالتثبيت.</li>
+          <li>أكمل خطوات المثبّت حتى النهاية.</li>
+        </ol>
+        <p class="note">
+          إن لم تظهر نافذة الإذن، انقر الملف بزر الفأرة الأيمن ثم اختر
+          «تشغيل كمسؤول».
+        </p>
+        <div class="actions">
+          <button class="button button--primary" id="done-show" type="button">
+            أظهر الملف في المجلد
+          </button>
+          <button class="button button--ghost" id="done-restart" type="button">
+            نزّله مرة أخرى
+          </button>
+        </div>
       </section>
     </main>
 
-    <footer id="session-bar" class="session-bar" hidden>
-      <span id="who" class="who"></span>
-      <button id="logout" class="link-button" type="button">تسجيل الخروج</button>
+    <!-- شريط الخطأ. يظهر فوق أي شاشة ولا يستبدلها: الشاشة سياق الخطأ. -->
+    <div class="alert" id="alert" hidden>
+      <p class="alert__message" id="alert-message"></p>
+      <button class="alert__action" id="alert-action" type="button" hidden></button>
+    </div>
+
+    <footer class="footer" id="footer" hidden>
+      <span id="footer-account"></span>
+      <button class="footer__link" data-signout type="button">خروج</button>
     </footer>
 
     <script type="module" src="popup.js"></script>

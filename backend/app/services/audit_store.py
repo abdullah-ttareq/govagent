@@ -219,6 +219,19 @@ _STORES: dict[str, type[AuditStore]] = {
     "oracle": OracleAuditStore,
 }
 
+#: يُستورد كسولًا: وحدة Supabase تقرأ إعداداتها وتفتح عميل HTTP عند الاستخدام
+#: لا عند الاستيراد، فيبقى المشروع يقلع بلا Supabase أصلًا — كما يقلع بلا
+#: Oracle. لهذا لا يظهر الصنف في ``_STORES`` مباشرة.
+def _supabase_store() -> type[AuditStore]:
+    from .supabase_stores import SupabaseAuditStore
+
+    return SupabaseAuditStore
+
+
+#: القيم المقبولة لـDATA_STORE.
+SUPPORTED_DATA_STORES: tuple[str, ...] = tuple(sorted({*_STORES, "supabase"}))
+
+
 
 def get_audit_store(name: str | None = None) -> AuditStore:
     """يعيد مخزن السجل المفعّل.
@@ -227,9 +240,11 @@ def get_audit_store(name: str | None = None) -> AuditStore:
         AuditStoreError: إذا كان الاسم غير مدعوم.
     """
     store_name = (name or settings.data_store or "memory").strip().lower()
+    if store_name == "supabase":
+        return _supabase_store()()
     store_class = _STORES.get(store_name)
     if store_class is None:
-        supported = "، ".join(sorted(_STORES))
+        supported = "، ".join(SUPPORTED_DATA_STORES)
         raise AuditStoreError(
             f"DATA_STORE='{store_name}' غير مدعوم. القيم المدعومة: {supported}."
         )

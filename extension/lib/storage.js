@@ -1,24 +1,32 @@
 /**
  * تخزين الإضافة المحلي — غلاف رفيع حول `chrome.storage.local`.
  *
- * **رمز الدخول يُحفظ هنا وحده**، لا في `localStorage` ولا في أي مكان آخر:
- * تخزين الإضافة معزول عن كل صفحة يفتحها الموظف، فلا تصل إليه سكربتات
- * المواقع. الإضافة لا تقرأ أي صفحة أصلًا ولا تملك صلاحية لذلك.
+ * **ما يُحفظ:** رمز الدخول ووقت انتهائه، بيانات الحساب للعرض، بصمة هذا
+ * الجهاز، وعلامة أن شاشة الترحيب رُئيت. لا شيء غير ذلك.
+ *
+ * **ما لا يُحفظ ولم يعد له وجود:** `apiBaseUrl`. كان الإصدار السابق يخزّن
+ * رابط سيرفر يضبطه الموظف بنفسه؛ حُذف مع حذف شاشة الإعدادات كلها — العنوان
+ * صار ثابتًا وقت البناء في `config.js`. أي مفتاح `apiBaseUrl` باقٍ من
+ * تثبيت قديم **يُمسح** عند أول تشغيل، فلا تبقى قيمة لا يقرؤها أحد.
+ *
+ * **ولا يُحفظ أي نصّ محادثة**: هذه الإضافة لم تعد واجهة محادثة أصلًا.
  *
  * كل دالة هنا تبتلع فشل التخزين وتعيد قيمة محايدة: نافذة لا تُفتح لأن
- * القراءة من التخزين فشلت أسوأ من نافذة تبدأ فارغة.
+ * القراءة فشلت أسوأ من نافذة تبدأ من الترحيب.
  */
 
-export const DEFAULT_API_BASE_URL = "http://localhost:8000";
-
-/** مفاتيح التخزين. `apiBaseUrl` بالاسم نفسه الذي استخدمه الـStarter. */
 const KEYS = {
-  baseUrl: "apiBaseUrl",
   token: "accessToken",
+  refreshToken: "refreshToken",
   expiresAt: "tokenExpiresAt",
-  user: "user",
-  conversationId: "conversationId",
+  account: "account",
+  deviceId: "deviceId",
+  deviceName: "deviceName",
+  welcomeSeen: "welcomeSeen",
 };
+
+/** مفاتيح إصدارات سابقة لم يعد لها معنى، تُمسح عند الإقلاع. */
+const LEGACY_KEYS = ["apiBaseUrl", "conversationId", "user"];
 
 async function read(keys) {
   try {
@@ -44,18 +52,14 @@ async function remove(keys) {
   }
 }
 
-/* -------------------------------------------------------------------------
-   رابط السيرفر
-   ------------------------------------------------------------------------- */
-
-/** يعيد الرابط المحفوظ، أو الافتراضي إن لم يُحفظ شيء. */
-export async function getApiBaseUrl() {
-  const stored = await read(KEYS.baseUrl);
-  return stored[KEYS.baseUrl] || DEFAULT_API_BASE_URL;
-}
-
-export async function setApiBaseUrl(baseUrl) {
-  await write({ [KEYS.baseUrl]: baseUrl });
+/**
+ * يمسح مفاتيح الإصدارات السابقة.
+ *
+ * أهمّها `apiBaseUrl`: تركه يعني بقاء عنوان سيرفر قديم على جهاز المستخدم
+ * بلا أي شاشة تعرضه أو تغيّره — بيانات ميتة في أحسن الأحوال.
+ */
+export async function pruneLegacyKeys() {
+  await remove(LEGACY_KEYS);
 }
 
 /* -------------------------------------------------------------------------
@@ -64,67 +68,98 @@ export async function setApiBaseUrl(baseUrl) {
 
 /**
  * @typedef {object} Session
- * @property {string} token رمز الدخول.
- * @property {number} expiresAt وقت الانتهاء بالمللي ثانية منذ الحقبة.
- * @property {object|null} user بيانات الموظف كما أعادها `/api/auth/login`.
+ * @property {string} token رمز Supabase.
+ * @property {number} expiresAt لحظة الانتهاء بالمللي ثانية منذ الحقبة.
+ * @property {object|null} account ملف العمل كما أعاده `/api/account/login`.
  */
 
 /** يعيد الجلسة المحفوظة، أو `null` إن لم يكن هناك رمز. */
 export async function getSession() {
-  const stored = await read([KEYS.token, KEYS.expiresAt, KEYS.user]);
+  const stored = await read([KEYS.token, KEYS.expiresAt, KEYS.account]);
   const token = stored[KEYS.token];
   if (!token) return null;
   return {
     token,
     expiresAt: stored[KEYS.expiresAt] ?? 0,
-    user: stored[KEYS.user] ?? null,
+    account: stored[KEYS.account] ?? null,
   };
 }
 
+/** هل الجلسة موجودة ولم تنتهِ مدتها بعد؟ */
+export function isSessionUsable(session, now = Date.now()) {
+  return Boolean(session?.token) && session.expiresAt > now;
+}
+
 /**
- * يحفظ الجلسة بعد تسجيل دخول ناجح.
+ * يحفظ الجلسة بعد دخول ناجح.
  *
- * `expires_in` مدة بالثواني، وتُحوَّل هنا إلى **لحظة انتهاء** مطلقة: مدة
+ * `expiresIn` مدة بالثواني تُحوَّل هنا إلى **لحظة انتهاء** مطلقة: مدة
  * متبقية محفوظة كما هي تصير خاطئة بمجرد إغلاق النافذة.
  */
-export async function setSession({ accessToken, expiresIn, user }) {
+export async function setSession({
+  accessToken,
+  refreshToken,
+  expiresIn,
+  account,
+}) {
   await write({
     [KEYS.token]: accessToken,
+    [KEYS.refreshToken]: refreshToken ?? "",
     [KEYS.expiresAt]: Date.now() + Math.max(0, expiresIn) * 1000,
-    [KEYS.user]: user ?? null,
+    [KEYS.account]: account ?? null,
   });
 }
 
-/** يحدّث بيانات الموظف وحدها (بعد `/api/auth/me`) بلا لمس الرمز. */
-export async function updateSessionUser(user) {
-  await write({ [KEYS.user]: user ?? null });
+/** يحدّث ملف العمل وحده بلا لمس الرمز. */
+export async function updateAccount(account) {
+  await write({ [KEYS.account]: account ?? null });
 }
 
 /**
- * يمسح الجلسة **والمحادثة معها**.
+ * يمسح الجلسة.
  *
- * المحادثة ملك صاحب الرمز، فتركها بعد الخروج يعرضها على من يسجّل الدخول
- * بعده على الجهاز نفسه.
+ * **بصمة الجهاز تبقى عمدًا:** هي صفة للجهاز لا للمستخدم، وتغييرها عند كل
+ * خروج يجعل الجهاز نفسه يبدو جهازًا جديدًا في كل مرة، فيصطدم المستخدم
+ * برسالة «مفعّل على جهاز آخر» على جهازه هو.
  */
 export async function clearSession() {
-  await remove([KEYS.token, KEYS.expiresAt, KEYS.user, KEYS.conversationId]);
+  await remove([KEYS.token, KEYS.refreshToken, KEYS.expiresAt, KEYS.account]);
 }
 
 /* -------------------------------------------------------------------------
-   آخر محادثة
+   الجهاز
    ------------------------------------------------------------------------- */
 
-/** معرّف آخر محادثة، أو `null`. */
-export async function getConversationId() {
-  const stored = await read(KEYS.conversationId);
-  const value = stored[KEYS.conversationId];
-  return typeof value === "number" && value > 0 ? value : null;
+/** يعيد بصمة الجهاز المحفوظة، أو `null`. */
+export async function getDeviceId() {
+  const stored = await read(KEYS.deviceId);
+  const value = stored[KEYS.deviceId];
+  return typeof value === "string" && value.length >= 8 ? value : null;
 }
 
-export async function setConversationId(conversationId) {
-  await write({ [KEYS.conversationId]: conversationId });
+export async function setDeviceId(deviceId) {
+  await write({ [KEYS.deviceId]: deviceId });
 }
 
-export async function clearConversationId() {
-  await remove(KEYS.conversationId);
+export async function getDeviceName() {
+  const stored = await read(KEYS.deviceName);
+  const value = stored[KEYS.deviceName];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+export async function setDeviceName(name) {
+  await write({ [KEYS.deviceName]: name });
+}
+
+/* -------------------------------------------------------------------------
+   شاشة الترحيب
+   ------------------------------------------------------------------------- */
+
+export async function getWelcomeSeen() {
+  const stored = await read(KEYS.welcomeSeen);
+  return stored[KEYS.welcomeSeen] === true;
+}
+
+export async function setWelcomeSeen() {
+  await write({ [KEYS.welcomeSeen]: true });
 }

@@ -1,0 +1,134 @@
+/**
+ * منطق التدفّق الإرشادي — **دالة نقية واحدة تقرّر أي شاشة تُعرض.**
+ *
+ * لماذا مفصولة عن `popup.js`؟ لأن التدفّق تسع حالات متشابكة (جلسة، حساب،
+ * اشتراك، جهاز، تنزيل)، وتشابكها في معالِجات أحداث DOM يجعل نصفها غير
+ * قابل للاختبار عمليًا. هنا هي **حالة داخلة ← معرّف شاشة خارج**، بلا DOM
+ * ولا شبكة ولا `chrome.*`، فتُختبر الحالات التسع كلها في ملّي ثانية.
+ *
+ * `popup.js` لا يقرّر شيئًا: يجمع الحالة، ينادي {@link resolveStep}، ثم
+ * يُظهر الشاشة التي عادت. قاعدة واحدة في مكان واحد.
+ */
+
+/**
+ * معرّفات الشاشات، بالترتيب الذي يمرّ بها المستخدم.
+ *
+ * @typedef {(
+ *   "welcome" | "signin" | "not-provisioned" | "subscription-blocked" |
+ *   "device-taken" | "activate" | "install" | "downloading" | "done"
+ * )} StepId
+ */
+export const STEPS = Object.freeze({
+  /** ترحيب وشرح للخطوات — أول ما يراه من لم يسجّل الدخول بعد. */
+  WELCOME: "welcome",
+  /** نموذج البريد وكلمة المرور. */
+  SIGNIN: "signin",
+  /** الحساب صحيح لكن لا جهة له — يحتاج مسؤول النظام. */
+  NOT_PROVISIONED: "not-provisioned",
+  /** اشتراك منتهٍ أو موقوف أو ملغى — رسالة السبب من السيرفر. */
+  SUBSCRIPTION_BLOCKED: "subscription-blocked",
+  /** الحساب مفعّل على جهاز آخر. */
+  DEVICE_TAKEN: "device-taken",
+  /** تفعيل هذا الجهاز. */
+  ACTIVATE: "activate",
+  /** زر «ثبّت GovMind». */
+  INSTALL: "install",
+  /** شريط التقدّم أثناء التنزيل. */
+  DOWNLOADING: "downloading",
+  /** انتهى التنزيل — افتح المثبّت. */
+  DONE: "done",
+});
+
+/**
+ * @typedef {object} FlowState
+ * @property {boolean} hasSession هل يوجد رمز دخول محفوظ وصالح المدة؟
+ * @property {boolean} welcomeSeen هل تجاوز المستخدم شاشة الترحيب من قبل؟
+ * @property {object|null} account ملف العمل، أو `null` إن لم يُربط الحساب بجهة.
+ * @property {object|null} subscription رد `/api/account/subscription`.
+ * @property {"idle"|"running"|"done"} download حالة تنزيل المثبّت.
+ */
+
+/**
+ * يعيد معرّف الشاشة التي يجب عرضها للحالة المعطاة.
+ *
+ * الترتيب مقصود: **الأشدّ حجبًا أولًا.** لا معنى لعرض «ثبّت GovMind» لمن
+ * انتهى اشتراكه لأن حالة التنزيل عنده `done` من جلسة سابقة.
+ *
+ * @param {Partial<FlowState>} state
+ * @returns {StepId}
+ */
+export function resolveStep(state = {}) {
+  const {
+    hasSession = false,
+    welcomeSeen = false,
+    account = null,
+    subscription = null,
+    download = "idle",
+  } = state;
+
+  // ١) بلا جلسة: ترحيب ثم دخول. الترحيب مرة واحدة — من رآه وسجّل خروجه
+  //    يعود إلى الدخول مباشرة، فتكراره عليه في كل مرة إبطاء بلا فائدة.
+  if (!hasSession) return welcomeSeen ? STEPS.SIGNIN : STEPS.WELCOME;
+
+  // ٢) حساب موثوق بلا جهة: لا شيء يستطيع فعله بنفسه.
+  if (!account) return STEPS.NOT_PROVISIONED;
+
+  // ٣) لم تصل حالة الاشتراك بعد (أو فشل جلبها): لا يُفترض شيء.
+  if (!subscription) return STEPS.ACTIVATE;
+
+  // ٤) اشتراك لا يسمح بالخدمة — قبل أي شاشة تفعيل أو تنزيل.
+  if (!subscription.is_usable) return STEPS.SUBSCRIPTION_BLOCKED;
+
+  // ٥) مفعّل على جهاز آخر: التفعيل هنا مستحيل حتى يبطله المسؤول.
+  if (isDeviceTaken(subscription)) return STEPS.DEVICE_TAKEN;
+
+  // ٦) لا جهاز مفعّلًا بعد، أو المفعّل ليس هذا الجهاز.
+  if (subscription.requires_activation) return STEPS.ACTIVATE;
+
+  // ٧) جهاز مفعّل واشتراك سليم: التنزيل وحالاته.
+  if (download === "running") return STEPS.DOWNLOADING;
+  if (download === "done") return STEPS.DONE;
+  return STEPS.INSTALL;
+}
+
+/**
+ * هل الاشتراك مفعّل على **جهاز آخر**؟
+ *
+ * الشرط مركّب: يوجد جهاز مفعّل **و** ليس هذا الجهاز. غياب `device` يعني
+ * أنه لم يُفعَّل شيء بعد، لا أن جهازًا آخر أخذه.
+ */
+export function isDeviceTaken(subscription) {
+  const device = subscription?.device;
+  return Boolean(device) && device.is_current_device === false;
+}
+
+/** نصّ العنوان الظاهر لكل شاشة — يستعمله العنوان الرئيسي وقارئ الشاشة. */
+export const STEP_TITLES = Object.freeze({
+  [STEPS.WELCOME]: "مرحبًا بك في GovMind",
+  [STEPS.SIGNIN]: "تسجيل الدخول",
+  [STEPS.NOT_PROVISIONED]: "الحساب غير مرتبط بجهة",
+  [STEPS.SUBSCRIPTION_BLOCKED]: "الاشتراك لا يسمح بالاستخدام",
+  [STEPS.DEVICE_TAKEN]: "الحساب مفعّل على جهاز آخر",
+  [STEPS.ACTIVATE]: "تفعيل هذا الجهاز",
+  [STEPS.INSTALL]: "تثبيت GovMind",
+  [STEPS.DOWNLOADING]: "جارٍ التنزيل",
+  [STEPS.DONE]: "اكتمل التنزيل",
+});
+
+/**
+ * رقم الخطوة في المؤشّر العلوي، أو `0` لشاشة خارج المسار.
+ *
+ * الشاشات المانعة (اشتراك منتهٍ، جهاز آخر) لا رقم لها: ليست خطوة يمرّ بها
+ * الناجح، وإعطاؤها رقمًا يوهم بأن بعدها خطوة يبلغها المستخدم بنفسه.
+ */
+export const STEP_NUMBERS = Object.freeze({
+  [STEPS.WELCOME]: 1,
+  [STEPS.SIGNIN]: 2,
+  [STEPS.ACTIVATE]: 3,
+  [STEPS.INSTALL]: 4,
+  [STEPS.DOWNLOADING]: 4,
+  [STEPS.DONE]: 5,
+});
+
+/** إجمالي خطوات المسار الناجح. */
+export const TOTAL_STEPS = 5;

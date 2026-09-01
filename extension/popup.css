@@ -1,57 +1,78 @@
-/* واجهة GovMind المنبثقة — عربية RTL، بلا أي مكتبة خارجية.
+/* =========================================================================
+   GovMind — أنماط النافذة المنبثقة
 
-   **الارتفاع ثابت عمدًا:** نافذة الإضافة تتمدد مع محتواها افتراضيًا، فتقفز
-   مع كل رسالة جديدة ومع فتح الإعدادات. هنا الجسم بارتفاع واحد، والمنطقة
-   الوحيدة التي تتمرّر هي سجل المحادثة. */
+   **RTL أصيل لا معكوس:** الاتجاه معلن على `<html dir="rtl">`، وكل تباعد
+   وحواف هنا بخصائص منطقية (`inline-start` / `inline-end` / `margin-inline`)
+   لا بـ`left` و`right`. بهذا تنقلب الواجهة كلها بتغيير سمة واحدة، ولا يبقى
+   عنصر «إنجليزي» في واجهة عربية.
+
+   **الوضع الفاتح والداكن بمتغيّرات على `:root`:** يضبطها `theme-init.js`
+   قبل أول رسم عبر `data-theme`، فلا وميض. الخيارات ثلاثة في الإضافة —
+   فاتح وداكن وتلقائي — بخلاف الموقع الذي يقتصر على اثنين.
+   ========================================================================= */
 
 :root {
   color-scheme: light;
 
-  /* محايد أولًا — مطابق لمتغيّرات الواجهة في frontend/app/globals.css.
-     لا أخضر ولا أزرق واسع؛ الإبراز هادئ ومحدود، والدلالي محجوز لمعناه. */
-  --bg: #ffffff;
-  --fg: #1f2023;
-  --muted: #6b6e76;
-  --border: #e4e4e7;
-  --accent: #4a6fa5;
-  /* الفعل الأساسي فحميّ في الوضع الفاتح. */
-  --action: #26272b;
-  --action-fg: #ffffff;
-  --error-bg: #fef3f2;
-  --error-fg: #b42318;
-  --error-border: #fbcfca;
-  --notice-bg: #f0f0f2;
-  --surface: #f3f3f5;
-  --user-bubble: #f0f0f2;
-  --user-bubble-fg: #1f2023;
-  /* خلفية ما حول الحاوية عند الفتح في تبويب كامل. */
-  --page-bg: #f7f7f8;
-  --container-shadow: 0 0 40px rgb(24 25 28 / 0.07);
+  --brand: #1e50c8;
+  --brand-strong: #17409f;
+  --brand-soft: #e8eefc;
+  --brand-contrast: #ffffff;
+
+  --background: #f6f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f1f3f9;
+  --foreground: #131824;
+  --muted: #5b6478;
+
+  --border-subtle: #dfe3ec;
+  --border-strong: #c3cad9;
+
+  --ok: #1a7f4b;
+  --ok-soft: #e6f4ec;
+  --warn: #8a5a00;
+  --warn-soft: #fdf2dd;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e8;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  --shadow-lg: 0 12px 28px rgb(16 24 40 / 18%);
 }
 
-/* ------------------------------------------------------------ الوضع الداكن
-
-   فحميّ محايد لا أسود صريح، بالمنطق نفسه المتّبع في الواجهة. والفعل
-   الأساسي ينقلب: سطح فاتح بنصّ فحميّ. */
-[data-theme="dark"] {
+:root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #232427;
-  --fg: #ececee;
-  --muted: #a1a3aa;
-  --border: #34353a;
-  --accent: #8fb0e0;
-  --action: #ececee;
-  --action-fg: #1a1b1e;
-  --error-bg: #2b1613;
-  --error-fg: #ff9086;
-  --error-border: #5c2b25;
-  --notice-bg: #2c2d31;
-  --surface: #2c2d31;
-  --user-bubble: #2c2d31;
-  --user-bubble-fg: #ececee;
-  --page-bg: #1a1b1e;
-  --container-shadow: 0 0 40px rgb(0 0 0 / 0.4);
+  --brand: #6f9bff;
+  --brand-strong: #8fb2ff;
+  --brand-soft: #17233f;
+  --brand-contrast: #0a1020;
+
+  --background: #0a1020;
+  --surface: #141b2d;
+  --surface-muted: #1b2438;
+  --foreground: #eef2fb;
+  --muted: #9aa5bd;
+
+  --border-subtle: #26304a;
+  --border-strong: #3a4767;
+
+  --ok: #5cc98d;
+  --ok-soft: #12301f;
+  --warn: #e3b160;
+  --warn-soft: #322510;
+  --danger: #f08c86;
+  --danger-soft: #351816;
+
+  --shadow-lg: 0 12px 28px rgb(0 0 0 / 45%);
 }
 
 * {
@@ -59,95 +80,48 @@
 }
 
 body {
-  /* عرض وارتفاع ثابتان: 560 أقل من سقف نوافذ الإضافات (600). */
-  width: 380px;
-  height: 560px;
-  /* `auto` جانبيًا يوسّط الجسم عند فتح الصفحة في تبويب كامل. لا أثر له في
-     النافذة المنبثقة لأن عرضها يساوي عرض الجسم تمامًا. */
-  margin: 0 auto;
-  padding: 10px 12px 12px;
+  inline-size: 360px;
+  min-block-size: 420px;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: "Segoe UI", "Noto Sans Arabic", system-ui, sans-serif;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 
-/* ------------------------------------------------------- فتحٌ في تبويب كامل
-
-   النافذة المنبثقة عرضها = عرض الجسم، فهذا الاستعلام لا يتحقق فيها إطلاقًا.
-   أما في تبويب كامل فعرض النافذة أكبر بكثير، فكان الجسم يلتصق بحافة البداية
-   (اليمين في RTL) ويترك فراغًا أبيض شاسعًا. هنا يصير حاوية متوسطة بالمنتصف
-   تملأ الارتفاع. */
-@media (min-width: 480px) {
-  html {
-    block-size: 100%;
-    background: var(--page-bg);
-  }
-
-  body {
-    inline-size: min(640px, 100% - 32px);
-    block-size: 100vh;
-    padding-inline: 20px;
-    border-inline: 1px solid var(--border);
-    box-shadow: var(--container-shadow);
-  }
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* ------------------------------------------------------------------ الرأس */
-
+/* ---------------------------------------------------------------- الرأس */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  flex: none;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface);
+  border-block-end: 1px solid var(--border-subtle);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
-.brand img {
-  display: block;
-  border-radius: 4px;
-}
-
-.header h1 {
+.brand h1 {
   margin: 0;
   font-size: 15px;
+  font-weight: 700;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.brand__tagline {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
 }
 
-/* --------------------------------------------------------- مبدّل المظهر
-
-   زرّ أيقونة صغير يفتح قائمة — النافذة ٣٨٠px، وثلاثة أزرار ظاهرة تزاحم
-   «محادثة جديدة» و«الإعدادات» في الرأس نفسه. */
-
+/* ------------------------------------------------------- مبدّل المظهر */
 .theme {
   position: relative;
   display: inline-flex;
@@ -157,400 +131,373 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  inline-size: 26px;
-  block-size: 24px;
-  padding: 0;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  inline-size: 32px;
+  block-size: 32px;
+  background-color: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   color: var(--muted);
   cursor: pointer;
 }
 
 .theme__trigger:hover {
-  color: var(--fg);
-  background: var(--surface);
-}
-
-.theme__trigger[aria-expanded="true"] {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--notice-bg);
+  background-color: var(--surface-muted);
+  color: var(--foreground);
 }
 
 .theme__trigger svg {
-  display: block;
-  inline-size: 14px;
-  block-size: 14px;
+  inline-size: 16px;
+  block-size: 16px;
 }
 
 .theme__menu {
   position: absolute;
-  inset-block-start: calc(100% + 6px);
-  inset-inline-end: 0;
-  z-index: 20;
-  min-inline-size: 7.5rem;
-  padding: 3px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
-}
+  inset-block-start: calc(100% + var(--space-1));
 
-.theme__menu[hidden] {
-  display: none;
+  /* ⚠️ `inset-inline-start` لا `inset-inline-end`: في RTL جهة `inline-end`
+     هي **اليسار**، وتثبيتها كان يمدّ القائمة نحو خارج النافذة فتُقتطع.
+     بـ`inline-start` تُحاذي بداية الزرّ وتنمو نحو داخل النافذة. */
+  inset-inline-start: 0;
+
+  z-index: 20;
+  min-inline-size: 120px;
+  /* حدٌّ أخير: القائمة تضيق ولا تخرج من إطار النافذة أبدًا. */
+  max-inline-size: calc(360px - 2 * var(--space-4));
+  padding: var(--space-1);
+  background-color: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
 }
 
 .theme__item {
   display: block;
   inline-size: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 4px;
-  background: none;
+  padding: var(--space-2) var(--space-3);
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
   font: inherit;
-  font-size: 13px;
-  color: var(--fg);
+  font-weight: 600;
   text-align: start;
   cursor: pointer;
 }
 
 .theme__item:hover {
-  background: var(--surface);
+  background-color: var(--surface-muted);
 }
 
 .theme__item[aria-checked="true"] {
-  color: var(--accent);
+  background-color: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* -------------------------------------------------- مؤشّر الخطوات */
+.steps {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.steps[aria-hidden="true"] {
+  display: none;
+}
+
+.steps__dot {
+  block-size: 3px;
+  flex: 1;
+  border-radius: 999px;
+  background-color: var(--border-subtle);
+}
+
+.steps__dot[data-state="done"] {
+  background-color: var(--brand);
+}
+
+.steps__dot[data-state="current"] {
+  background-color: var(--brand);
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------------------ الشاشات */
+.main {
+  flex: 1;
+  padding: var(--space-4);
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.screen__title {
+  margin: 0 0 var(--space-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.screen__lead {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 40px;
+  block-size: 40px;
+  margin-block-end: var(--space-3);
+  border-radius: 999px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.status--ok {
+  background-color: var(--ok-soft);
+  color: var(--ok);
+}
+
+.status--warn {
+  background-color: var(--warn-soft);
+  color: var(--warn);
+}
+
+.status--danger {
+  background-color: var(--danger-soft);
+  color: var(--danger);
+}
+
+.checklist {
+  margin: 0 0 var(--space-3);
+  padding-inline-start: var(--space-4);
+  color: var(--foreground);
+}
+
+.checklist li {
+  margin-block-end: var(--space-1);
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface-muted);
+  border-inline-start: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------- الحقائق */
+.facts {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: 3px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
   font-weight: 600;
 }
 
-/* -------------------------------------------------------------- الإعدادات */
-
-.settings {
-  flex: none;
-  margin-bottom: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
+/* --------------------------------------------------------- النماذج */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-/* ------------------------------------------------------------ حقول الإدخال */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 
-.field-label,
-.settings label,
-.login-form label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 13px;
+.field__label {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
 }
 
-textarea,
-input[type="url"],
-input[type="email"],
-input[type="password"] {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.field__input {
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
   font: inherit;
-  color: inherit;
-  background: var(--bg);
 }
 
-textarea {
-  resize: none;
-  /* كما في الفقاعات: الكتابة بالإنجليزية داخل حقل RTL تبقى مقروءة. */
-  unicode-bidi: plaintext;
-  text-align: start;
-}
-
-textarea:focus,
-input:focus,
-button:focus-visible,
-.log:focus-visible {
-  outline: 2px solid var(--accent);
+.field__input:focus-visible {
+  outline: 2px solid var(--brand);
   outline-offset: 1px;
+  border-color: var(--brand);
 }
 
-/* --------------------------------------------------------------- الأزرار */
-
-.primary-button,
-.secondary-button {
-  padding: 8px 14px;
-  border: 1px solid var(--action);
-  border-radius: 6px;
+/* --------------------------------------------------------- الأزرار */
+.button {
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   font: inherit;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.primary-button {
-  width: 100%;
-  margin-top: 8px;
-  background: var(--action);
-  color: var(--action-fg);
-}
-
-.secondary-button {
-  margin-top: 8px;
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.primary-button:disabled,
-.secondary-button:disabled,
-.link-button:disabled {
-  opacity: 0.6;
+.button:disabled {
+  opacity: 0.55;
   cursor: progress;
 }
 
-.link-button {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
+.button--primary {
+  background-color: var(--brand);
+  color: var(--brand-contrast);
 }
 
-.link-button[hidden] {
-  display: none;
+.button--primary:hover:not(:disabled) {
+  background-color: var(--brand-strong);
 }
 
-/* ---------------------------------------------------------------- الحالات */
+.button--secondary {
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--foreground);
+}
 
-.main {
-  flex: 1;
-  min-height: 0;
+.button--ghost {
+  background-color: transparent;
+  color: var(--muted);
+}
+
+.button--ghost:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.actions {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
 }
 
-.view {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+/* ------------------------------------------------------ شريط التقدّم */
+.progress {
+  block-size: 8px;
+  margin-block-end: var(--space-2);
+  overflow: hidden;
+  background-color: var(--surface-muted);
+  border-radius: 999px;
 }
 
-.view[hidden] {
-  display: none;
+.progress__bar {
+  block-size: 100%;
+  inline-size: 0%;
+  background-color: var(--brand);
+  border-radius: 999px;
+  transition: inline-size 0.25s ease;
 }
 
-.view-centered {
-  align-items: center;
-  justify-content: center;
+/* التنزيل بلا حجم كلي معروف: حركة مستمرة بدل نسبة كاذبة. */
+.progress__bar[data-indeterminate="true"] {
+  inline-size: 40%;
+  animation: progress-slide 1.2s ease-in-out infinite alternate;
 }
 
-.view-title {
-  margin: 0 0 10px;
-  font-size: 14px;
-}
-
-.login-form {
-  overflow-y: auto;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.notice {
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--notice-bg);
-  font-size: 13px;
-}
-
-.error {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--error-bg);
-  color: var(--error-fg);
-}
-
-/* --------------------------------------------------------- سجل المحادثة */
-
-.view-chat {
-  gap: 8px;
-}
-
-.log {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 4px 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.bubble {
-  max-width: 88%;
-  padding: 7px 10px;
-  border-radius: 10px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  /* النص المختلط عربي/إنجليزي: `plaintext` يجعل كل فقرة تأخذ اتجاهها من
-     أول حرف قويّ فيها، فلا تنقلب جملة إنجليزية داخل رد عربي ولا يهاجر
-     ترقيمها إلى الطرف الخطأ. */
-  unicode-bidi: plaintext;
-  text-align: start;
-}
-
-.bubble-user {
-  align-self: flex-start;
-  background: var(--user-bubble);
-  color: var(--user-bubble-fg);
-  border-bottom-right-radius: 3px;
-}
-
-.bubble-assistant {
-  align-self: flex-end;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 3px;
-}
-
-.bubble-sources {
-  margin: 6px 0 0;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.log-empty {
-  margin: auto;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-/* مؤشر الانتظار: ثلاث نقاط تنبض بلا تغيير في ارتفاع الفقاعة. */
-.typing {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  height: 1.7em;
-}
-
-.typing span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted);
-  animation: typing-pulse 1.2s infinite ease-in-out;
-}
-
-.typing span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing-pulse {
-  0%,
-  80%,
-  100% {
-    opacity: 0.25;
+@keyframes progress-slide {
+  from {
+    margin-inline-start: 0;
   }
-  40% {
-    opacity: 1;
+  to {
+    margin-inline-start: 60%;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .typing span {
+  .progress__bar {
+    transition: none;
     animation: none;
-    opacity: 0.6;
   }
 }
 
-/* ------------------------------------------------------- شريط الخطأ الدائم */
-
-.banner {
-  flex: none;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--error-border);
-  border-radius: 6px;
-  background: var(--error-bg);
-  color: var(--error-fg);
-}
-
-.banner[hidden] {
-  display: none;
-}
-
-.banner-text {
-  margin: 0;
-  font-size: 13px;
-}
-
-.banner-button {
-  flex: none;
-  align-self: center;
-  padding: 4px 8px;
-  border: 1px solid var(--error-fg);
-  border-radius: 5px;
-  background: transparent;
-  color: var(--error-fg);
-  font: inherit;
+.progress__label {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
   font-size: 12px;
-  cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
 
-.banner-button[hidden] {
-  display: none;
-}
-
-/* ------------------------------------------------------------ حقل الكتابة */
-
-.composer {
-  flex: none;
-}
-
-.composer .primary-button {
-  margin-top: 6px;
-}
-
-/* --------------------------------------------------------- شريط الجلسة */
-
-.session-bar {
-  flex: none;
+/* ------------------------------------------------------------ التنبيه */
+.alert {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  gap: var(--space-2);
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--danger-soft);
+  border-inline-start: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
   font-size: 12px;
-  color: var(--muted);
 }
 
-.session-bar[hidden] {
+.alert[hidden] {
   display: none;
 }
 
-.who {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.alert__message {
+  margin: 0;
+}
+
+.alert__action {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  background-color: transparent;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------ التذييل */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--surface);
+  border-block-start: 1px solid var(--border-subtle);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.footer[hidden] {
+  display: none;
+}
+
+.footer__link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
 }

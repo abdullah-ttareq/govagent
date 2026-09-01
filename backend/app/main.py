@@ -10,6 +10,7 @@ from .api import api_router
 from .api.errors import register_error_handlers
 from .core.config import settings
 from .database import close_pool
+from .database.supabase import close_client
 
 
 @asynccontextmanager
@@ -22,6 +23,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     yield
     close_pool()
+    close_client()
 
 
 #: وصف كل مجموعة مسارات كما تظهر في /docs، بالترتيب نفسه.
@@ -77,6 +79,17 @@ OPENAPI_TAGS = [
         "description": (
             "سجل تدقيق الجهة: من فعل ماذا ومتى. **لمسؤول الجهة ولجهته "
             "وحدها**، وهو سجل إضافة فقط لا يُعدَّل ولا يُحذف."
+        ),
+    },
+    {
+        "name": "account",
+        "description": (
+            "الحساب والاشتراك وتفعيل الجهاز وتحميل مثبّت GovMind. "
+            "**المصادقة هنا عبر Supabase Auth** (`auth.users`) لا عبر رمز "
+            "التطبيق: `POST /api/account/login` يعيد رمز Supabase يُرسل في "
+            "ترويسة `Authorization: Bearer <token>`. كل اشتراك يعمل على "
+            "**جهاز واحد**، وتغيير الجهاز يحتاج إلغاء تفعيل السابق من "
+            "مسؤول الجهة. رابط التحميل قصير العمر ويولّده السيرفر وحده."
         ),
     },
     {

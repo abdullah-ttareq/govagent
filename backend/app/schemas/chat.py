@@ -125,6 +125,23 @@ class OracleHealth(BaseModel):
     )
 
 
+class DependencyHealth(BaseModel):
+    """حالة خدمة خارجية كما تظهر في /health.
+
+    حقل إعلامي فقط: كون الخدمة غير مضبوطة أو غير متاحة لا يجعل الخدمة نفسها
+    غير سليمة، لأن النظام يعمل بالكامل بدونها في وضع التطوير.
+    """
+
+    configured: bool = Field(..., description="هل ضُبطت متغيرات الخدمة كلها؟")
+    status: Literal["not_configured", "ok", "error"] = Field(
+        ...,
+        description="not_configured: غير مضبوطة | ok: متصلة | error: تعذّر الاتصال",
+    )
+    detail: str | None = Field(
+        None, description="شرح عربي للحالة عند عدم الضبط أو عند الفشل"
+    )
+
+
 class HealthResponse(BaseModel):
     """حالة الخدمة."""
 
@@ -132,3 +149,7 @@ class HealthResponse(BaseModel):
     app_env: str
     model_provider: str
     oracle: OracleHealth
+    #: **حقل جديد ولا يكسر عميلًا قائمًا:** الحقول السابقة كلها باقية بأسمائها.
+    supabase: DependencyHealth
+    #: هل ضُبط تخزين Azure؟ لا يُلمس الشبكة للفحص — الإعداد وحده يُقرأ.
+    installer_storage_configured: bool = False

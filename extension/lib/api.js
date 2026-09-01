@@ -1,20 +1,25 @@
 /**
  * عميل GovMind Backend داخل الإضافة.
  *
- * كل المسارات هنا موجودة فعلًا في الـBackend ولا يُخترع منها شيء:
- * `POST /api/auth/login` و `GET /api/auth/me` و `POST /api/auth/logout`
- * (`backend/app/api/auth.py`)، و `POST /api/chat` (`backend/app/api/chat.py`)،
- * و `GET /api/conversations/{id}/messages` (`backend/app/api/conversations.py`).
+ * كل المسارات هنا موجودة فعلًا في `backend/app/api/entitlements.py`:
+ * `POST /api/account/login`، و `GET /api/account/subscription`،
+ * و `POST /api/account/devices/activate`، و `POST /api/account/devices/verify`،
+ * و `POST /api/account/installer/download-url`.
  *
- * رابط السيرفر يُقرأ من التخزين **عند كل طلب** لا مرة واحدة: الموظف قد
- * يغيّره من الإعدادات والنافذة مفتوحة.
+ * **العنوان ثابت من `config.js` ولا يُقرأ من التخزين.** الإصدار السابق كان
+ * يقرأ رابطًا يضبطه الموظف عند كل طلب؛ لم يعد لذلك وجود — لا شاشة إعدادات
+ * ولا مفتاح تخزين ولا فحص إذن نطاق، لأن النطاق واحد ومعلن في
+ * `host_permissions`.
+ *
+ * ⚠️ **الإضافة لا تنادي Supabase ولا Azure مباشرة.** مفتاح Supabase على
+ * السيرفر، ورابط Azure يصل موقّعًا جاهزًا ولا يُعرض للمستخدم.
  */
 
-import { getApiBaseUrl } from "./storage.js";
+import { BACKEND_URL, REQUEST_TIMEOUT_MS } from "../config.js";
 
 /** رسالة موحّدة لتوقّف السيرفر أو انقطاع الشبكة. */
 export const OFFLINE_MESSAGE =
-  "تعذّر الاتصال بسيرفر جهتك. تأكد من تشغيل السيرفر ومن صحة رابطه في الإعدادات.";
+  "تعذّر الاتصال بخدمة GovMind. تأكد من اتصالك بالإنترنت ثم أعد المحاولة.";
 
 /** خطأ يحمل رمز الحالة ومعرّف الخطأ النصّي من غلاف أخطاء الـBackend. */
 export class ApiError extends Error {
@@ -35,81 +40,32 @@ export class NetworkError extends Error {
 }
 
 /**
- * إذن الاتصال بنطاق السيرفر غير ممنوح للإضافة.
- *
- * يُكتشف **قبل** إرسال الطلب: بلا هذا الفحص يفشل `fetch` بالخطأ نفسه الذي
- * يعطيه سيرفر متوقف، فيُرسل الموظف يبحث عن عطل في سيرفر يعمل.
- */
-export class HostPermissionError extends Error {
-  constructor(origin) {
-    super(
-      "لم تمنح المتصفحَ إذنَ الاتصال بنطاق سيرفر جهتك، فلا تستطيع الإضافة " +
-        "إرسال أي طلب إليه.",
-    );
-    this.name = "HostPermissionError";
-    this.origin = origin;
-  }
-}
-
-/** نمط الأصل كما تفهمه صلاحيات الإضافة: `http://host:port/*`. */
-export function originPattern(baseUrl) {
-  return new URL(baseUrl).origin + "/*";
-}
-
-/** هل مُنحت الإضافة إذن الاتصال بهذا الرابط؟ */
-export async function hasHostPermission(baseUrl) {
-  try {
-    return await chrome.permissions.contains({
-      origins: [originPattern(baseUrl)],
-    });
-  } catch {
-    // رابط لا يصلح نمطًا (لا يقع تحت http/https) — يُعامل كغير مسموح.
-    return false;
-  }
-}
-
-/**
- * يطلب إذن الاتصال بالنطاق. **يجب أن يُستدعى من داخل نقرة المستخدم**،
- * وإلا رفضه المتصفح بلا أن يعرض شيئًا.
- */
-export async function requestHostPermission(baseUrl) {
-  try {
-    return await chrome.permissions.request({
-      origins: [originPattern(baseUrl)],
-    });
-  } catch {
-    return false;
-  }
-}
-
-/**
  * ينفّذ طلبًا ويعيد جسم الرد مُحلّلًا.
  *
- * كل فشل يخرج من هنا كـ`HostPermissionError` أو `NetworkError` أو
- * `ApiError` برسالة عربية جاهزة للعرض — لا يصل الموظف نصّ استثناء خام.
+ * كل فشل يخرج من هنا كـ`NetworkError` أو `ApiError` برسالة عربية جاهزة
+ * للعرض — لا يصل المستخدم نصّ استثناء خام ولا رمز حالة عارٍ.
  */
 export async function apiRequest(path, { method = "GET", body, token } = {}) {
-  const baseUrl = await getApiBaseUrl();
-
-  if (!(await hasHostPermission(baseUrl))) {
-    throw new HostPermissionError(originPattern(baseUrl));
-  }
-
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
+  // مهلة صريحة: `fetch` بلا مهلة قد يعلّق النافذة إلى الأبد على شبكة صامتة.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   let response;
   try {
-    response = await fetch(`${baseUrl}${path}`, {
+    response = await fetch(`${BACKEND_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch {
-    throw new NetworkError(
-      `تعذّر الاتصال بـ${baseUrl}. تأكد من تشغيل سيرفر جهتك ومن صحة الرابط في الإعدادات.`,
-    );
+    throw new NetworkError();
+  } finally {
+    clearTimeout(timer);
   }
 
   if (response.status === 204) return undefined;
@@ -134,50 +90,75 @@ export async function apiRequest(path, { method = "GET", body, token } = {}) {
 }
 
 /* -------------------------------------------------------------------------
-   المصادقة
+   الحساب
    ------------------------------------------------------------------------- */
 
-/** `POST /api/auth/login` — يعيد `TokenResponse`. */
+/**
+ * `POST /api/account/login` — يعيد الجلسة وملف العمل.
+ *
+ * **الحقلان المرسَلان هما البريد وكلمة المرور فقط.** لا رابط ولا مفتاح ولا
+ * معرّف جهة: الجهة تُقرأ على السيرفر من ملف الحساب.
+ */
 export function login(email, password) {
-  return apiRequest("/api/auth/login", {
+  return apiRequest("/api/account/login", {
     method: "POST",
     body: { email, password },
   });
 }
 
-/** `GET /api/auth/me` — يعيد `UserOut`. يعمل ولو انتهى اشتراك الجهة. */
-export function fetchCurrentUser(token) {
-  return apiRequest("/api/auth/me", { token });
-}
-
-/** `POST /api/auth/logout` — تأكيد فقط؛ الرمز موقّع ولا يُلغى على السيرفر. */
-export function logout(token) {
-  return apiRequest("/api/auth/logout", { method: "POST", token });
+/** `GET /api/account/me` — ملف العمل. يعمل ولو كان الاشتراك منتهيًا. */
+export function fetchAccount(token) {
+  return apiRequest("/api/account/me", { token });
 }
 
 /* -------------------------------------------------------------------------
-   المحادثة
+   الاشتراك والجهاز
    ------------------------------------------------------------------------- */
 
-/**
- * `POST /api/chat` — يعيد `ChatResponse`.
- *
- * **لا يُرسل حقل `history`:** مع رمز الدخول يقرأ الـBackend السياق من
- * المحادثة المحفوظة، وإرسال سياق من العميل يُرفض بـ422 لأنه قابل للتلفيق.
- * `conversationId` فارغًا يفتح محادثة جديدة ويعيد معرّفها في الرد.
- */
-export function sendChatMessage(token, message, conversationId) {
-  return apiRequest("/api/chat", {
+/** `GET /api/account/subscription` — الحالة والجهاز المفعّل. */
+export function fetchSubscription(token) {
+  return apiRequest("/api/account/subscription", { token });
+}
+
+/** `POST /api/account/devices/activate` — يفعّل هذا الجهاز. */
+export function activateDevice(token, deviceId, deviceName) {
+  return apiRequest("/api/account/devices/activate", {
     method: "POST",
     token,
-    body: {
-      message,
-      ...(conversationId ? { conversation_id: conversationId } : {}),
-    },
+    body: { device_id: deviceId, device_name: deviceName },
   });
 }
 
-/** `GET /api/conversations/{id}/messages` — من الأقدم إلى الأحدث. */
-export function listMessages(token, conversationId) {
-  return apiRequest(`/api/conversations/${conversationId}/messages`, { token });
+/**
+ * `POST /api/account/devices/verify` — يتأكد أن هذا الجهاز هو المفعّل.
+ *
+ * **يُستدعى بدل `fetchSubscription` كلما وُجد جهاز مفعّل**: مسار القراءة
+ * لا يعرف بصمة الطالب — إرسالها في رابط `GET` يضعها في سجلات السيرفر —
+ * فلا يستطيع أن يقول إن كان المفعّل هو هذا الجهاز أم غيره.
+ */
+export function verifyDevice(token, deviceId) {
+  return apiRequest("/api/account/devices/verify", {
+    method: "POST",
+    token,
+    body: { device_id: deviceId },
+  });
+}
+
+/* -------------------------------------------------------------------------
+   المثبّت
+   ------------------------------------------------------------------------- */
+
+/**
+ * `POST /api/account/installer/download-url` — رابط SAS قصير العمر.
+ *
+ * ⚠️ **الرابط لا يُعرض للمستخدم ولا يُنسخ إلى الحافظة**: يُمرَّر مباشرة إلى
+ * `chrome.downloads.download`. هو صالح للتحميل بلا هوية حتى ينتهي، فعرضه
+ * دعوةٌ إلى مشاركته.
+ */
+export function requestInstallerUrl(token, deviceId) {
+  return apiRequest("/api/account/installer/download-url", {
+    method: "POST",
+    token,
+    body: { device_id: deviceId },
+  });
 }

@@ -31,16 +31,40 @@ from .governance import (
     SubscriptionOut,
     SubscriptionUpdateRequest,
 )
+from .entitlements import (
+    AccountLoginRequest,
+    AccountOut,
+    AccountSessionResponse,
+    ActiveDeviceOut,
+    DeviceActivateRequest,
+    DeviceListResponse,
+    DeviceVerifyRequest,
+    InstallerDownloadRequest,
+    InstallerDownloadResponse,
+    SubscriptionStatusResponse,
+)
 from .chat import (
     ChatMessageIn,
     ChatRequest,
     ChatResponse,
     ChatSource,
+    DependencyHealth,
     HealthResponse,
     OracleHealth,
 )
 
 __all__ = [
+    # الحساب والاشتراك وتفعيل الجهاز وتحميل المثبّت
+    "AccountLoginRequest",
+    "AccountOut",
+    "AccountSessionResponse",
+    "ActiveDeviceOut",
+    "DeviceActivateRequest",
+    "DeviceListResponse",
+    "DeviceVerifyRequest",
+    "InstallerDownloadRequest",
+    "InstallerDownloadResponse",
+    "SubscriptionStatusResponse",
     # المصادقة
     "LoginRequest",
     "LogoutResponse",
@@ -80,6 +104,7 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "ChatSource",
+    "DependencyHealth",
     "HealthResponse",
     "OracleHealth",
 ]

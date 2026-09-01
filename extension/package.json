@@ -1,0 +1,15 @@
+{
+  "name": "govmind-extension",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "إضافة GovMind — تفعيل الاشتراك وتنزيل المثبّت. لا واجهة محادثة.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.7"
+  }
+}
