@@ -35,6 +35,12 @@ param(
     [switch]$SkipUi,
     [switch]$SkipRuntime,
 
+    # قناة الإصدار. **`development` هو الافتراضي عمدًا**: بناءٌ غير موقّع
+    # ولا مُختبَر حيًّا لا يجوز أن يبدو إنتاجيًا لمن يجده على قرص لاحقًا.
+    # `production` يُمرَّر صراحةً، ويبقى غير مقبول بلا شهادة توقيع.
+    [ValidateSet("development", "production")]
+    [string]$Channel = "development",
+
     # مفسّر بايثون الذي يحمل PyInstaller. **لا يُفترض أن `python` على
     # المسار هو الصحيح**: كثير من أجهزة التطوير فيها أكثر من نسخة، وواحدة
     # منها فقط فيها تبعيات الـRuntime.
@@ -138,9 +144,18 @@ Copy-Item $Vendor (Join-Path $Staging "llama.cpp") -Recurse -Force
 # ---------------------------------------------------------------------------
 Write-Step "كتابة الإعداد العام"
 # ⚠️ عنوان فقط. أي مفتاح هنا يعني تسريبه إلى كل جهاز عميل.
-@{ control_plane_url = $ControlPlaneUrl } |
-    ConvertTo-Json |
+@{
+    control_plane_url = $ControlPlaneUrl
+    # القناة تُكتب في الإعداد كذلك لا في اسم الملف وحده: من يفتح تثبيتًا
+    # على جهاز بعد شهور يجب أن يعرف من أين جاء.
+    channel           = $Channel
+    built_at          = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+} | ConvertTo-Json |
     Set-Content -Path (Join-Path $Staging "govmind.config.json") -Encoding utf8
+
+if ($Channel -eq "development") {
+    Write-Host "    قناة: development — بناء تطوير غير موقّع" -ForegroundColor Yellow
+}
 
 Write-Step "نسخ التراخيص"
 Copy-Item (Join-Path $Installer "licenses") (Join-Path $Staging "licenses") -Recurse -Force
@@ -168,10 +183,16 @@ Write-Host "    لا أسرار في الحزمة ✔" -ForegroundColor Green
 # ---------------------------------------------------------------------------
 Write-Step "بناء المثبّت بـInno Setup"
 $Iscc = Get-Command "iscc" -ErrorAction SilentlyContinue
+if ($Iscc) { $Iscc = $Iscc.Source }
 if (-not $Iscc) {
+    # ⚠️ **مسار المستخدم مشمول عمدًا.** `winget` بلا صلاحيات مسؤول يثبّت
+    # Inno Setup تحت %LOCALAPPDATA%\Programs لا تحت Program Files، ولا يضيفه
+    # إلى PATH. البحث في المسارين الأخيرين وحدهما يجعل البناء يفشل بـ«غير
+    # مثبَّت» على جهاز مثبَّتة فيه فعلًا.
     foreach ($candidate in @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
     )) {
         if (Test-Path $candidate) { $Iscc = $candidate; break }
     }
@@ -184,16 +205,24 @@ Inno Setup غير مثبَّت على هذا الجهاز.
   winget install --id JRSoftware.InnoSetup -e
   choco install innosetup -y
 
+يُبحث عنه في:
+  %ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
+  %ProgramFiles%\Inno Setup 6\ISCC.exe
+  %LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe   (تثبيت winget بلا صلاحيات)
+
 كل الخطوات السابقة اكتملت، ومخرجاتها جاهزة في:
   $Staging
 "@
 }
 
-& $Iscc "/Q" (Join-Path $Installer "govmind.iss")
+& $Iscc "/Q" "/DChannel=$Channel" "/DControlPlaneUrl=$ControlPlaneUrl" `
+    (Join-Path $Installer "govmind.iss")
 if ($LASTEXITCODE -ne 0) { throw "فشل بناء المثبّت." }
 
 Write-Step "اكتمل البناء"
 Write-Host "المثبّت: $(Join-Path $Output 'GovMindSetup.exe')" -ForegroundColor Green
+Write-Host ""
+Write-Host "القناة: $Channel   |   عنوان الخدمة: $ControlPlaneUrl"
 Write-Host ""
 Write-Host "⚠️ هذا المثبّت غير موقّع. ويندوز سيعرض «ناشر غير معروف»." -ForegroundColor Yellow
 Write-Host "   للإنتاج: وقّعه بشهادة Code Signing — انظر installer\README.md" -ForegroundColor Yellow

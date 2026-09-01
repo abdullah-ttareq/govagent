@@ -30,6 +30,16 @@
 ; المقبول شهادة Code Signing — انظر installer\README.md.
 ; ============================================================================
 
+; تُمرَّران من build.ps1. القيم هنا احتياطٌ للتشغيل المباشر بـiscc.
+#ifndef Channel
+  #define Channel "development"
+#endif
+#ifndef ControlPlaneUrl
+  #define ControlPlaneUrl "http://127.0.0.1:8000"
+#endif
+
+#define IsDev (Channel == "development")
+
 #define AppName "GovMind"
 #define AppNameAr "جوَف مايند"
 #define AppVersion "1.0.0"
@@ -43,6 +53,13 @@
 AppId={{7C3E2F51-9A64-4E7B-9F2D-1B8A6C4D5E30}
 AppName={#AppName}
 AppVersion={#AppVersion}
+; ⚠️ اسم النسخة يحمل القناة: بناء التطوير يجب أن يُعرف من «إضافة أو إزالة
+; البرامج» وحدها، لا بفتح ملف إعداد داخله.
+#if IsDev
+AppVerName={#AppName} {#AppVersion} (بناء تطوير — غير موقّع)
+#else
+AppVerName={#AppName} {#AppVersion}
+#endif
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
@@ -67,7 +84,11 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; **لا تشمل المودل** الذي يُنزَّل لاحقًا — رسالة المساحة في الـRuntime تذكره.
 ExtraDiskSpaceRequired=52428800
 
+#if IsDev
+UninstallDisplayName={#AppName} (بناء تطوير)
+#else
 UninstallDisplayName={#AppName}
+#endif
 UninstallDisplayIcon={app}\{#RuntimeExe}
 
 [Languages]
@@ -76,6 +97,7 @@ Name: "arabic"; MessagesFile: "compiler:Languages\Arabic.isl"
 [CustomMessages]
 arabic.LaunchAfterInstall=تشغيل GovMind الآن
 arabic.CreateDesktopIcon=إنشاء اختصار على سطح المكتب
+arabic.DevBuildNotice=⚠️ هذه نسخة تطوير من GovMind، غير موقّعة رقميًا ولم تُختبر على خدمة حقيقية.%n%nعنوان الخدمة المضبوط فيها: {#ControlPlaneUrl}%n%nلا تُوزَّع هذه النسخة على مستخدمين نهائيين.
 arabic.ModelNotice=سيُنزَّل ملف المودل (نحو ٥٫٣ ج.ب) بعد تفعيل الجهاز من إضافة المتصفح. تأكد من وجود مساحة كافية واتصال بالإنترنت.
 
 [Tasks]
@@ -128,7 +150,19 @@ Type: filesandordirs; Name: "{commonappdata}\{#AppName}\logs"
 Type: files; Name: "{commonappdata}\{#AppName}\session.txt"
 
 [Code]
-{ ملاحظة للمستخدم عن حجم المودل قبل أن يبدأ التثبيت. }
+{ تحذير قناة التطوير **قبل** أن يبدأ التثبيت، لا بعده: من يرفض المتابعة
+  يجب ألا يكون قد نسخ ملفًا واحدًا إلى جهازه. }
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+#if IsDev
+  Result := MsgBox(ExpandConstant('{cm:DevBuildNotice}') + #13#10#13#10 +
+                   'هل تريد المتابعة؟',
+                   mbConfirmation, MB_YESNO) = IDYES;
+#endif
+end;
+
+{ ملاحظة للمستخدم عن حجم المودل بعد اكتمال نسخ الملفات. }
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
