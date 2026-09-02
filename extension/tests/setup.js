@@ -1,0 +1,169 @@
+/**
+ * `chrome` مزيّف لاختبارات الإضافة.
+ *
+ * **يحاكي السلوك لا الشكل فقط:** التخزين قاموس حقيقي، والتنزيلات تحفظ
+ * سجلًّا بحالة تتغيّر — فاختبار «شريط التقدّم يتحرّك ثم ينتهي» يمرّ على
+ * المنطق نفسه الذي يعمل في المتصفح، لا على استدعاء مزيّف يعيد رقمًا.
+ *
+ * الاستدعاءات بنمط رد النداء (callback) كما في Manifest V3 لا الوعود:
+ * `chrome.downloads.download` يأخذ `callback`، وكودنا يلفّه بوعد. لو زيّفناه
+ * بوعد لاختبرنا شيئًا لا وجود له.
+ */
+
+import { beforeEach, vi } from "vitest";
+
+/** يعيد تعيين التخزين والتنزيلات — يُستدعى قبل كل اختبار. */
+export function resetChrome() {
+  const store = new Map();
+  const downloads = new Map();
+  let nextDownloadId = 1;
+
+  globalThis.chrome = {
+    runtime: { lastError: undefined },
+
+    storage: {
+      local: {
+        async get(keys) {
+          const wanted =
+            keys === undefined || keys === null
+              ? [...store.keys()]
+              : Array.isArray(keys)
+                ? keys
+                : [keys];
+          const result = {};
+          for (const key of wanted) {
+            if (store.has(key)) result[key] = store.get(key);
+          }
+          return result;
+        },
+        async set(values) {
+          for (const [key, value] of Object.entries(values)) {
+            store.set(key, value);
+          }
+        },
+        async remove(keys) {
+          for (const key of Array.isArray(keys) ? keys : [keys]) {
+            store.delete(key);
+          }
+        },
+      },
+    },
+
+    // `chrome.tabs.create` لا يحتاج صلاحية `tabs` — إنشاء تبويب مسموح
+    // بلا إذن، وقراءة محتواه هي الممنوعة. الإضافة لا تقرأ شيئًا.
+    tabs: {
+      create: vi.fn(async () => ({ id: 1 })),
+    },
+
+    downloads: {
+      /** يسجّل تنزيلًا جديدًا بحالة «جارٍ» وبلا بايتات بعد. */
+      download: vi.fn((options, callback) => {
+        if (chrome.downloads.__refuse) {
+          chrome.runtime.lastError = { message: "Download refused" };
+          callback(undefined);
+          chrome.runtime.lastError = undefined;
+          return;
+        }
+        const id = nextDownloadId++;
+        downloads.set(id, {
+          id,
+          url: options.url,
+          filename: options.filename,
+          state: "in_progress",
+          bytesReceived: 0,
+          totalBytes: 0,
+        });
+        callback(id);
+      }),
+
+      search: vi.fn(({ id }, callback) => {
+        const item = downloads.get(id);
+        callback(item ? [item] : []);
+      }),
+
+      cancel: vi.fn((id, callback) => {
+        const item = downloads.get(id);
+        if (item) {
+          item.state = "interrupted";
+          item.error = "USER_CANCELED";
+        }
+        callback?.();
+      }),
+
+      show: vi.fn(),
+
+      /**
+       * يحاكي `chrome.downloads.open` بنمط الوعد كما في Manifest V3.
+       *
+       * ⚠️ **لا يشغّل شيئًا**: يسجّل الاستدعاء فقط. `__refuseOpen` يحاكي
+       * متصفحًا رفض الفتح — صلاحية غير ممنوحة أو نسخة لا تدعمه — وهي
+       * حالة يجب أن تُختبَر لأن سلوك الإضافة عندها يختلف تمامًا.
+       */
+      open: vi.fn((id) => {
+        if (chrome.downloads.__refuseOpen) {
+          return Promise.reject(new Error("Not allowed"));
+        }
+        if (!downloads.has(id)) {
+          return Promise.reject(new Error("Unknown download"));
+        }
+        chrome.downloads.__opened.push(id);
+        return Promise.resolve();
+      }),
+
+      /** معرّفات الملفات التي طُلب فتحها — للتحقق في الاختبارات. */
+      __opened: [],
+      /** يجعل الفتح التالي يفشل، كمتصفح بلا صلاحية `downloads.open`. */
+      __refuseOpen: false,
+
+      // -- أدوات للاختبارات لا للإضافة --------------------------------
+      /** يجعل الطلب التالي يفشل، كما يفعل متصفح يمنع التنزيل. */
+      __refuse: false,
+      /** يقدّم تنزيلًا جاريًا إلى بايتات معيّنة. */
+      __advance(id, bytesReceived, totalBytes) {
+        const item = downloads.get(id);
+        if (!item) return;
+        item.bytesReceived = bytesReceived;
+        if (totalBytes !== undefined) item.totalBytes = totalBytes;
+      },
+      /** ينهي التنزيل بنجاح أو بانقطاع لسبب معلوم. */
+      __finish(id, { error } = {}) {
+        const item = downloads.get(id);
+        if (!item) return;
+        item.state = error ? "interrupted" : "complete";
+        if (error) item.error = error;
+        else item.bytesReceived = item.totalBytes || item.bytesReceived;
+      },
+      /**
+       * يزرع تنزيلًا مكتملًا في السجل، كمن نزّل المثبّت في جلسة سابقة.
+       *
+       * تحتاجه اختبارات ما بعد التثبيت: حالتها الحقيقية أن التنزيل تمّ
+       * والنافذة أُغلقت، فلا سبيل إلى بلوغها بنقرة داخل الاختبار نفسه.
+       */
+      __seed(id, { state = "complete", filename = "GovMindSetup.exe" } = {}) {
+        downloads.set(id, {
+          id,
+          url: "https://example.invalid/GovMindSetup.exe",
+          filename,
+          state,
+          bytesReceived: 1024,
+          totalBytes: 1024,
+        });
+        if (id >= nextDownloadId) nextDownloadId = id + 1;
+      },
+      /** يحذف سجل التنزيل، كمن يمسحه من قائمة المتصفح. */
+      __forget(id) {
+        downloads.delete(id);
+      },
+      __all() {
+        return [...downloads.values()];
+      },
+    },
+  };
+
+  return { store, downloads };
+}
+
+beforeEach(() => {
+  resetChrome();
+  window.localStorage?.clear();
+});

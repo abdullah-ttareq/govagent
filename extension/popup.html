@@ -2,56 +2,592 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
-    <title>GovAgent</title>
+    <title>GovMind</title>
+    <!-- قبل ورقة الأنماط: يضبط الوضع فلا يومض الأبيض على من اختار الداكن.
+         `localStorage` لأنه **متزامن** — `chrome.storage.local` غير متزامن
+         فيصل بعد أول رسم. ولا يحتاج أيًّا منهما صلاحية جديدة. -->
+    <script src="theme-init.js"></script>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
-      <h1>GovAgent</h1>
-      <button id="settings-toggle" class="link-button" type="button">
-        الإعدادات
-      </button>
+      <div class="brand">
+        <img src="icons/icon-32.png" alt="" width="22" height="22" />
+        <div>
+          <h1>GovMind</h1>
+          <p class="brand__tagline">مساعد الجهات الحكومية</p>
+        </div>
+      </div>
+
+      <div class="theme" id="theme-root">
+        <button
+          id="theme-trigger"
+          class="theme__trigger"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="theme-menu"
+          aria-label="المظهر"
+          title="المظهر"
+        >
+          <svg id="theme-icon" viewBox="0 0 20 20" aria-hidden="true"></svg>
+        </button>
+
+        <!-- خياران فقط: فاتح وداكن — كما في الموقع تمامًا. خيار «تلقائي»
+             كان يعني أيقونةً في الترويسة لا تدلّ على المظهر المعروض، وإعدادًا
+             يتغيّر تحت المستخدم عند غروب الشمس. الاختيار هنا صريح ويبقى. -->
+        <div id="theme-menu" class="theme__menu" role="menu" hidden>
+          <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="light">
+            فاتح
+          </button>
+          <button class="theme__item" type="button" role="menuitemradio" data-theme-choice="dark">
+            داكن
+          </button>
+        </div>
+      </div>
     </header>
 
-    <section id="settings" class="settings" hidden>
-      <label for="api-base-url">رابط سيرفر الجهة (API Base URL)</label>
-      <input
-        id="api-base-url"
-        type="url"
-        dir="ltr"
-        placeholder="http://localhost:8000"
-        autocomplete="off"
-      />
-      <button id="save-settings" class="secondary-button" type="button">
-        حفظ الرابط
-      </button>
-      <p id="settings-status" class="hint" role="status"></p>
-    </section>
+    <!-- مؤشّر الخطوات. يُخفى في الشاشات المانعة: ليست خطوة في المسار. -->
+    <div class="steps" id="steps" aria-hidden="true">
+      <span class="steps__dot" data-step="1"></span>
+      <span class="steps__dot" data-step="2"></span>
+      <span class="steps__dot" data-step="3"></span>
+      <span class="steps__dot" data-step="4"></span>
+      <span class="steps__dot" data-step="5"></span>
+      <span class="steps__dot" data-step="6"></span>
+      <span class="steps__dot" data-step="7"></span>
+    </div>
 
-    <main class="main">
-      <label for="message" class="field-label">رسالتك</label>
-      <textarea
-        id="message"
-        rows="4"
-        placeholder="اكتب رسالتك هنا…"
-        maxlength="8000"
-      ></textarea>
-
-      <button id="send" class="primary-button" type="button">إرسال</button>
-
-      <p id="loading" class="loading" role="status" hidden>
-        جارٍ الإرسال إلى سيرفر الجهة…
-      </p>
-
-      <p id="error" class="error" role="alert" hidden></p>
-
-      <section id="reply-box" class="reply-box" hidden>
-        <h2 class="reply-title">رد الإيجنت</h2>
-        <p id="reply" class="reply"></p>
-        <p id="provider" class="hint"></p>
+    <main class="main" id="main">
+      <!-- ٠) فحص الإقلاع — محايد وقصير (سقفه ثانية واحدة) -->
+      <!-- ⚠️ **لا يقول «جارٍ التفعيل» ولا يعد بشيء.** يقول ما يحدث: فحص.
+           وشريطه ثابت لا متحرك بلا نهاية: عمره أقصر من أن يُنيمَ العين. -->
+      <section class="screen" id="screen-checking" hidden>
+        <h2 class="screen__title">جاري التحقق...</h2>
+        <p class="screen__lead">لحظة واحدة.</p>
       </section>
-    </main>
 
-    <script src="popup.js"></script>
+      <!-- ١) ترحيب -->
+      <section class="screen" id="screen-welcome" hidden>
+        <h2 class="screen__title">مرحبًا بك في GovMind</h2>
+        <p class="screen__lead">
+          مساعد ذكاء اصطناعي يعمل <strong>على جهازك</strong>. ثلاث خطوات
+          وينتهي التجهيز.
+        </p>
+        <ol class="checklist">
+          <li>سجّل الدخول أو أنشئ حسابًا.</li>
+          <li>اختر طريقة البدء.</li>
+          <li>نزّل GovMind وثبّته.</li>
+        </ol>
+        <p class="note">
+          الاشتراك يعمل على <strong>جهاز واحد</strong>، ويمكنك نقله إلى
+          جهاز آخر بنفسك متى احتجت.
+        </p>
+        <button class="button button--primary" id="welcome-next" type="button">
+          التالي
+        </button>
+      </section>
+
+      <!-- ٢) تسجيل الدخول -->
+      <section class="screen" id="screen-signin" hidden>
+        <h2 class="screen__title">تسجيل الدخول</h2>
+        <!-- ⚠️ حقلان فقط. **لا حقل لرابط سيرفر ولا لمفتاح API** — العنوان
+             ثابت في `config.js` وقت البناء. -->
+        <form class="form" id="signin-form">
+          <label class="field">
+            <span class="field__label">البريد الإلكتروني</span>
+            <input
+              class="field__input"
+              id="signin-email"
+              type="email"
+              name="email"
+              autocomplete="username"
+              required
+              dir="ltr"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field__label">كلمة المرور</span>
+            <input
+              class="field__input"
+              id="signin-password"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              required
+              dir="ltr"
+            />
+          </label>
+
+          <button class="button button--primary" id="signin-submit" type="submit">
+            دخول
+          </button>
+        </form>
+
+        <!-- الفاصل يجعل «إنشاء حساب» إجراءً ثانيًا واضحًا لا زرًّا منافسًا
+             للدخول: أكثر من يفتح الإضافة عنده حساب أصلًا. -->
+        <p class="switcher">
+          ليس لديك حساب؟
+          <button class="switcher__link" id="go-register" type="button">
+            إنشاء حساب جديد
+          </button>
+        </p>
+      </section>
+
+
+      <!-- ٢-ب) إنشاء حساب جديد -->
+      <section class="screen" id="screen-register" hidden>
+        <h2 class="screen__title">إنشاء حساب جديد</h2>
+        <p class="screen__lead">
+          يبدأ حسابك باشتراك تجريبي لمدة ٣٠ يومًا على جهاز واحد.
+        </p>
+
+        <!-- ⚠️ أربعة حقول، **ولا حقل لرابط سيرفر ولا لمفتاح API ولا لاسم
+             جهة**. الاشتراك فردي: حساب واحد وجهاز واحد. -->
+        <form class="form" id="register-form">
+          <label class="field">
+            <span class="field__label">الاسم الكامل</span>
+            <input
+              class="field__input"
+              id="register-name"
+              type="text"
+              name="full_name"
+              autocomplete="name"
+              required
+            />
+          </label>
+
+          <label class="field">
+            <span class="field__label">البريد الإلكتروني</span>
+            <input
+              class="field__input"
+              id="register-email"
+              type="email"
+              name="email"
+              autocomplete="email"
+              required
+              dir="ltr"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field__label">كلمة المرور</span>
+            <input
+              class="field__input"
+              id="register-password"
+              type="password"
+              name="new-password"
+              autocomplete="new-password"
+              minlength="8"
+              required
+              dir="ltr"
+            />
+            <span class="field__hint">ثمانية أحرف على الأقل.</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">تأكيد كلمة المرور</span>
+            <input
+              class="field__input"
+              id="register-confirm"
+              type="password"
+              name="confirm-password"
+              autocomplete="new-password"
+              minlength="8"
+              required
+              dir="ltr"
+            />
+          </label>
+
+          <button class="button button--primary" id="register-submit" type="submit">
+            إنشاء الحساب
+          </button>
+        </form>
+
+        <p class="switcher">
+          لديك حساب بالفعل؟
+          <button class="switcher__link" id="go-login" type="button">
+            العودة إلى تسجيل الدخول
+          </button>
+        </p>
+      </section>
+
+      <!-- ٢-ج) الحساب أُنشئ وينتظر تأكيد البريد -->
+      <section class="screen" id="screen-confirm-email" hidden>
+        <div class="status status--ok" aria-hidden="true">✓</div>
+        <h2 class="screen__title">أُنشئ حسابك</h2>
+        <p class="screen__lead" id="confirm-email-message"></p>
+        <p class="note">
+          افتح الرسالة واضغط رابط التأكيد، ثم عد إلى هنا وسجّل الدخول.
+        </p>
+        <button class="button button--primary" id="confirm-email-login" type="button">
+          تسجيل الدخول
+        </button>
+      </section>
+
+      <!-- ٣) حساب لم يكتمل تجهيزه -->
+      <section class="screen" id="screen-not-provisioned" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">الحساب غير مكتمل التجهيز</h2>
+        <p class="screen__lead" id="not-provisioned-message">
+          دخولك صحيح، لكن تجهيز حسابك لم يكتمل بعد. أعد تسجيل الدخول، وإن
+          تكرر الأمر فتواصل مع الدعم.
+        </p>
+        <button class="button button--ghost" data-signout type="button">
+          تسجيل الخروج
+        </button>
+      </section>
+
+      <!-- ٤) اشتراك لا يسمح -->
+      <section class="screen" id="screen-subscription-blocked" hidden>
+        <div class="status status--danger" aria-hidden="true">×</div>
+        <h2 class="screen__title" id="blocked-title">الاشتراك لا يسمح بالاستخدام</h2>
+        <p class="screen__lead" id="blocked-message"></p>
+        <dl class="facts" id="blocked-facts"></dl>
+        <div class="actions">
+          <button class="button button--secondary" data-refresh type="button">
+            تحديث الحالة
+          </button>
+          <button class="button button--ghost" data-signout type="button">
+            تسجيل الخروج
+          </button>
+        </div>
+      </section>
+
+      <!-- ٥) مفعّل على جهاز آخر -->
+      <section class="screen" id="screen-device-taken" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">الحساب مفعّل على جهاز آخر</h2>
+        <p class="screen__lead" id="device-taken-message"></p>
+        <dl class="facts" id="device-taken-facts"></dl>
+        <p class="note">
+          كل اشتراك يعمل على <strong>جهاز واحد</strong>. إن كان هذا هو
+          جهازك الجديد فاستبدل الجهاز السابق به من هنا.
+        </p>
+
+        <!-- ⚠️ تحذير قبل الفعل لا بعده: النتيجة لا تُلغى بضغطة رجوع. -->
+        <p class="note note--warn" id="replace-warning">
+          سيتوقف GovMind عن العمل على الجهاز السابق فور الاستبدال.
+        </p>
+
+        <form class="form" id="replace-form">
+          <!-- كلمة المرور من جديد: رمز الدخول وحده لا يوقف GovMind على
+               حاسب آخر. -->
+          <label class="field">
+            <span class="field__label">كلمة مرور حسابك</span>
+            <input
+              class="field__input"
+              id="replace-password"
+              type="password"
+              name="current-password"
+              autocomplete="current-password"
+              required
+              dir="ltr"
+            />
+            <span class="field__hint">
+              نطلبها للتأكد أنك صاحب الحساب قبل نقل الاشتراك.
+            </span>
+          </label>
+
+          <button
+            class="button button--primary"
+            id="replace-submit"
+            type="submit"
+          >
+            استبدال الجهاز السابق
+          </button>
+        </form>
+
+        <div class="actions">
+          <button class="button button--ghost" data-refresh type="button">
+            تحديث الحالة
+          </button>
+          <button class="button button--ghost" data-signout type="button">
+            تسجيل الخروج
+          </button>
+        </div>
+      </section>
+
+      <!-- ٦) اختيار طريقة البدء -->
+      <!-- ⚠️ **لا شاشة «فعّل هذا الجهاز» بعد اليوم.** كانت تفعّل بصمة
+           المتصفح العشوائية فتشغل خانة الجهاز الوحيدة بهوية لا يملكها
+           الـRuntime، فيُردّ تفعيله بعد التثبيت ويبقى الحساب عالقًا.
+           التفعيل صار من الـRuntime وحده برمز التركيب. -->
+      <section class="screen" id="screen-choose-plan" hidden>
+        <h2 class="screen__title">اختر طريقة البدء</h2>
+        <p class="demo-badge" id="demo-badge">
+          نسخة عرض أكاديمية — لا توجد رسوم حقيقية
+        </p>
+
+        <!-- ⚠️ **خياران، لا بطاقتان.**
+             كانت كل بطاقة تحمل عنوانًا وقائمة مزايا فوق زرّها، فبدت
+             الشاشة صفحةَ تعريف والزرّان تفصيلًا فيها. الاختيار هنا هو كل
+             ما في الخطوة، فلا يعلوه نصّ يُقرأ قبله.
+
+             وشرح «جهاز واحد» انتقل إلى شاشة التثبيت: هناك يعني شيئًا
+             للمستخدم، وهنا كان يزاحم القرار. -->
+        <div class="plan-actions">
+          <button
+            class="button button--primary button--lg"
+            id="plan-trial-start"
+            type="button"
+          >
+            ابدأ التجربة
+          </button>
+          <!-- ⚠️ **معطّل بالسمة الحقيقية `disabled`، لا بالمظهر.**
+               زرٌّ يبدو معطّلًا وهو قابل للنقر يخدع لوحة المفاتيح وقارئ
+               الشاشة معًا. و`disabled` يمنع النقر والتركيز في المتصفح
+               نفسه، فلا يبقى المنع معتمدًا على شرطٍ في الشيفرة. -->
+          <button
+            class="button button--outline button--lg"
+            id="plan-paid-start"
+            type="button"
+            disabled
+            aria-describedby="plan-paid-note"
+          >
+            اشترك الآن
+          </button>
+          <p class="plan-note" id="plan-paid-note">
+            غير متاح في النسخة الأكاديمية
+          </p>
+        </div>
+      </section>
+
+      <!-- ٧) تثبيت -->
+      <section class="screen" id="screen-install" hidden>
+        <h2 class="screen__title">تثبيت GovMind</h2>
+        <p class="screen__lead">
+          نزّل مثبّت GovMind وشغّله على هذا الجهاز. يُفعَّل اشتراكك على
+          الجهاز تلقائيًا بعد انتهاء التثبيت.
+        </p>
+        <!-- مكان شرح «جهاز واحد»: هنا يعني شيئًا، لا في شاشة الاختيار. -->
+        <p class="note">
+          اشتراكك يعمل على <strong>جهاز واحد</strong>، ويمكنك نقله إلى
+          جهاز آخر بنفسك متى احتجت.
+        </p>
+        <dl class="facts" id="install-facts"></dl>
+        <button class="button button--primary" id="install-start" type="button">
+          نزّل GovMind وثبّته
+        </button>
+      </section>
+
+      <!-- ٨) جارٍ التنزيل -->
+      <section class="screen" id="screen-downloading" hidden>
+        <h2 class="screen__title">جارٍ تنزيل GovMind</h2>
+        <div
+          class="progress"
+          role="progressbar"
+          id="progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="progress__bar" id="progress-bar"></div>
+        </div>
+        <p class="progress__label" id="progress-label">يبدأ التنزيل…</p>
+        <button class="button button--ghost" id="download-cancel" type="button">
+          إلغاء التنزيل
+        </button>
+      </section>
+
+      <!-- ٩) اكتمل التنزيل: **الفتح بنقرة صريحة من المستخدم**.
+           ⚠️ الزرّ السابق كان يطلب من المستخدم أن **يقرّ** بأنه فتح المثبّت،
+           فيبدأ الانتظار على إقرارٍ لا على فعلٍ وقع — والملف ما زال مغلقًا
+           في مجلد التنزيلات. الزرّ الآن يفتح الملف فعلًا، والانتظار يبدأ
+           على نتيجة الفتح وحدها. -->
+      <section class="screen" id="screen-installer-ready" hidden>
+        <div class="status status--ok" aria-hidden="true">✓</div>
+        <h2 class="screen__title">تم تنزيل GovMind</h2>
+        <p class="screen__lead">
+          نُزّل <strong id="ready-file-name"></strong>. اضغط «فتح ملف التثبيت»
+          ليبدأ المثبّت.
+        </p>
+        <ol class="checklist">
+          <li>وافق على نافذة ويندوز التي تطلب الإذن بالتثبيت.</li>
+          <li>أكمل خطوات المثبّت حتى النهاية.</li>
+        </ol>
+        <!-- ⚠️ **نافذة ويندوز جزء من المسار لا عائق فيه.** لا شيء في هذه
+             الإضافة يتخطّى UAC ولا SmartScreen ولا Smart App Control، ولا
+             سبيل إلى ذلك من داخل إضافة متصفح. -->
+        <button class="button button--primary" id="ready-open" type="button">
+          فتح ملف التثبيت
+        </button>
+        <div class="actions">
+          <button class="button button--secondary" id="ready-show" type="button">
+            إظهار في المجلد
+          </button>
+        </div>
+      </section>
+
+      <!-- ٩ب) رفض المتصفح فتح الملف — **خطوة واحدة باقية، وبلا استطلاع** -->
+      <section class="screen" id="screen-open-failed" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">افتح ملف التثبيت من المجلد</h2>
+        <p class="screen__lead" id="open-failed-message">
+          افتح GovMindSetup.exe من المجلد لإكمال التثبيت.
+        </p>
+        <p class="note">
+          فتحنا لك مجلد التنزيلات وحدّدنا الملف. بعد أن يكتمل المثبّت اضغط
+          «تحقق من التثبيت».
+        </p>
+        <button class="button button--primary" id="open-failed-check" type="button">
+          تحقق من التثبيت
+        </button>
+        <div class="actions">
+          <button class="button button--secondary" id="open-failed-show" type="button">
+            إظهار في المجلد
+          </button>
+        </div>
+      </section>
+
+      <!-- ١٠) بانتظار ظهور الـRuntime — **بعد أن فُتح الملف فعلًا** -->
+      <section class="screen" id="screen-awaiting-runtime" hidden>
+        <h2 class="screen__title">بانتظار اكتمال تثبيت GovMind</h2>
+        <p class="screen__lead">
+          أكمل خطوات المثبّت ووافق على نافذة ويندوز. سيتابع GovMind تلقائيًا
+          فور انتهائه.
+        </p>
+        <div class="progress" role="status">
+          <div class="progress__bar" data-indeterminate="true"></div>
+        </div>
+        <p class="progress__label" id="awaiting-label">
+          جارٍ البحث عن GovMind على هذا الجهاز…
+        </p>
+        <div class="actions">
+          <button class="button button--secondary" id="awaiting-show" type="button">
+            إظهار في المجلد
+          </button>
+          <button class="button button--ghost" id="awaiting-help" type="button">
+            لم يبدأ GovMind؟
+          </button>
+        </div>
+      </section>
+
+      <!-- ١١) انتهت المهلة أو تعثّر التثبيت — تشخيص لا انتظار بلا نهاية -->
+      <section class="screen" id="screen-install-help" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">لم يبدأ GovMind بعد</h2>
+        <p class="screen__lead" id="install-help-message">
+          لم يبدأ GovMind بعد. تأكد من إكمال المثبّت وأن Windows لم يمنعه، ثم
+          أعد المحاولة.
+        </p>
+        <ul class="checklist" id="install-help-causes">
+          <li>لم تفتح ملف المثبّت بعد.</li>
+          <li>نافذة إذن ويندوز ما زالت تنتظر موافقتك.</li>
+          <li>لم تنتهِ خطوات المثبّت.</li>
+          <li>
+            منعت حماية ويندوز تشغيل البرنامج
+            <span dir="ltr">(Smart App Control)</span> — هذه نسخة تطوير غير
+            موقَّعة رقميًا.
+          </li>
+        </ul>
+        <div class="actions">
+          <button class="button button--primary" id="help-retry" type="button">
+            تحقق من التثبيت
+          </button>
+          <button class="button button--secondary" id="help-show" type="button">
+            إظهار في المجلد
+          </button>
+          <button class="button button--ghost" id="help-restart" type="button">
+            نزّل المثبّت مرة أخرى
+          </button>
+        </div>
+      </section>
+
+      <!-- ١٢) تسليم رمز التركيب وتفعيل الجهاز -->
+      <section class="screen" id="screen-activating-device" hidden>
+        <h2 class="screen__title">جارٍ تفعيل هذا الجهاز</h2>
+        <p class="screen__lead">
+          يجري ربط اشتراكك بهذا الجهاز. لا تغلق GovMind.
+        </p>
+        <div class="progress" role="status">
+          <div class="progress__bar" data-indeterminate="true"></div>
+        </div>
+      </section>
+
+      <!-- ١٢ب) لم يصل رمز التركيب إلى GovMind أصلًا.
+           ⚠️ **غير شاشة «تعذّر تفعيل هذا الجهاز»**: هناك وصل الرمز ورُفض،
+           وهنا لم يصل. الإجراء يختلف، فالشاشة تختلف. -->
+      <section class="screen" id="screen-handover-failed" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">تعذّر إكمال ربط الجهاز</h2>
+        <p class="screen__lead" id="handover-failed-message">
+          لم يصل رمز التركيب إلى GovMind على هذا الجهاز.
+        </p>
+        <div class="actions">
+          <button class="button button--primary" id="handover-retry" type="button">
+            أعد المحاولة
+          </button>
+          <button class="button button--ghost" id="handover-restart" type="button">
+            نزّل المثبّت مرة أخرى
+          </button>
+        </div>
+      </section>
+
+      <!-- ١٢ج) وصل الرمز ورفض الخادم التفعيل — رسالة السبب كما وردت -->
+      <section class="screen" id="screen-activation-failed" hidden>
+        <div class="status status--warn" aria-hidden="true">!</div>
+        <h2 class="screen__title">تعذّر تفعيل هذا الجهاز</h2>
+        <p class="screen__lead" id="activation-failed-message">
+          رفض تفعيل هذا الجهاز على اشتراكك.
+        </p>
+        <div class="actions">
+          <button class="button button--primary" id="activation-retry" type="button">
+            أعد المحاولة
+          </button>
+          <button class="button button--ghost" data-refresh type="button">
+            تحديث حالة الاشتراك
+          </button>
+        </div>
+      </section>
+
+      <!-- ١١) الـRuntime يجهّز المودل -->
+      <section class="screen" id="screen-preparing-model" hidden>
+        <h2 class="screen__title">جارٍ تجهيز GovMind</h2>
+        <p class="screen__lead" id="preparing-message">
+          جارٍ تنزيل المودل…
+        </p>
+        <div
+          class="progress"
+          role="progressbar"
+          id="preparing-progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="progress__bar" id="preparing-bar"></div>
+        </div>
+        <p class="progress__label" id="preparing-label"></p>
+        <p class="note">
+          يُنزَّل المودل مرة واحدة فقط. يمكنك إغلاق هذه النافذة؛ سيكمل
+          GovMind العمل في الخلفية.
+        </p>
+      </section>
+
+      <!-- ١٢) جاهز -->
+      <section class="screen" id="screen-installed" hidden>
+        <div class="status status--ok" aria-hidden="true">✓</div>
+        <h2 class="screen__title">GovMind جاهز على هذا الجهاز</h2>
+        <p class="screen__lead">
+          اكتمل التثبيت والتفعيل. يمكنك فتح GovMind الآن.
+        </p>
+        <dl class="facts" id="installed-facts"></dl>
+        <button class="button button--primary" id="installed-open" type="button">
+          افتح GovMind
+        </button>
+      </section>
+
+    <!-- شريط الخطأ. يظهر فوق أي شاشة ولا يستبدلها: الشاشة سياق الخطأ. -->
+
+    <div class="alert" id="alert" hidden>
+      <p class="alert__message" id="alert-message"></p>
+      <button class="alert__action" id="alert-action" type="button" hidden></button>
+    </div>
+
+    <footer class="footer" id="footer" hidden>
+      <span id="footer-account"></span>
+      <button class="footer__link" data-signout type="button">خروج</button>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
   </body>
 </html>

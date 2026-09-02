@@ -3,7 +3,7 @@
 هذه واجهة مستقبلية فقط. لا يتم تحميل أو تشغيل أي مودل محلي في الـMVP الحالي.
 """
 
-from .base import ChatResult, ModelProvider, ModelProviderError
+from .base import ChatMessage, ChatResult, ModelProvider, ModelProviderError
 
 
 class LocalModelProvider(ModelProvider):
@@ -15,8 +15,11 @@ class LocalModelProvider(ModelProvider):
 
     name = "local"
 
-    def generate(self, message: str, system_prompt: str) -> ChatResult:
+    def generate(
+        self, messages: list[ChatMessage], system_prompt: str
+    ) -> ChatResult:
         raise ModelProviderError(
-            "المزود المحلي غير منفذ في الـMVP الحالي. "
-            "استخدم MODEL_PROVIDER=mock للتشغيل المحلي."
+            "المزود المحلي (MODEL_PROVIDER=local) غير منفذ في الـMVP الحالي. "
+            "استخدم MODEL_PROVIDER=mock للتشغيل المحلي، أو MODEL_PROVIDER=oracle "
+            "مع إعدادات OCI الصحيحة."
         )

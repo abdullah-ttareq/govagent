@@ -1,19 +1,31 @@
 {
   "manifest_version": 3,
-  "name": "GovAgent",
-  "version": "0.1.0",
-  "description": "مساعد ذكاء اصطناعي عام لموظفي الجهات الحكومية — نسخة MVP.",
-  "action": {
-    "default_title": "GovAgent",
-    "default_popup": "popup.html"
+  "name": "GovMind (dev 0.5.0)",
+  "version": "0.5.0",
+  "description": "تفعيل اشتراك GovMind على هذا الجهاز وتنزيل المثبّت. لا تقرأ الإضافة أي صفحة.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   },
-  "permissions": ["storage"],
+  "action": {
+    "default_title": "GovMind",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": ["storage", "downloads", "downloads.open"],
   "host_permissions": [
     "http://localhost:8000/*",
-    "http://127.0.0.1:8000/*"
-  ],
-  "optional_host_permissions": [
-    "http://*/*",
-    "https://*/*"
+    "http://127.0.0.1:8765/*",
+    "http://127.0.0.1:8766/*",
+    "http://127.0.0.1:8767/*",
+    "http://127.0.0.1:8768/*",
+    "http://127.0.0.1:8769/*"
   ]
 }

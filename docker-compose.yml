@@ -1,0 +1,39 @@
+# تشغيل GovMind على سيرفر الجهة: Backend + Frontend.
+#
+# ⚠️ قاعدة Oracle **خارجية** وليست هنا عمدًا: الجهة تملك قاعدتها وتديرها،
+# ولا يجوز أن تنشئها هذه المنظومة أو تتحكم بدورة حياتها. يصل الـBackend إليها
+# عبر ORACLE_DSN في ملف .env، أو تبقى فارغة فيعمل النظام بدونها.
+#
+# قبل أول تشغيل:  cp .env.example .env
+# التشغيل:        docker compose up --build
+#
+# الوضع الافتراضي (MODEL_PROVIDER=mock و RETRIEVAL_PROVIDER=memory) يعمل
+# بالكامل بلا Oracle وبلا أي بيانات اعتماد.
+#
+# مع MODEL_PROVIDER=lmstudio: الحاوية لا ترى 127.0.0.1 الخاص بالجهاز المضيف،
+# فاضبط في .env — لهذه الحالة وحدها:
+#   LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+# ومن يشغّل الـBackend مباشرة بلا Docker يترك الافتراضي 127.0.0.1 كما هو.
+
+services:
+  backend:
+    build: ./backend
+    # كل الإعدادات والأسرار من .env، ولا شيء منها مكتوب في هذا الملف.
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # يُدمج وقت البناء لا وقت التشغيل. العنوان كما يراه **متصفح الموظف**،
+        # لذلك هو localhost لا http://backend:8000 الذي لا يُعرف خارج الشبكة.
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped

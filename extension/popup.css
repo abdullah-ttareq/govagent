@@ -1,15 +1,78 @@
-/* واجهة GovAgent المنبثقة — عربية RTL، بلا أي مكتبة خارجية. */
+/* =========================================================================
+   GovMind — أنماط النافذة المنبثقة
+
+   **RTL أصيل لا معكوس:** الاتجاه معلن على `<html dir="rtl">`، وكل تباعد
+   وحواف هنا بخصائص منطقية (`inline-start` / `inline-end` / `margin-inline`)
+   لا بـ`left` و`right`. بهذا تنقلب الواجهة كلها بتغيير سمة واحدة، ولا يبقى
+   عنصر «إنجليزي» في واجهة عربية.
+
+   **الوضع الفاتح والداكن بمتغيّرات على `:root`:** يضبطها `theme-init.js`
+   قبل أول رسم عبر `data-theme`، فلا وميض. الخيارات ثلاثة في الإضافة —
+   فاتح وداكن وتلقائي — بخلاف الموقع الذي يقتصر على اثنين.
+   ========================================================================= */
 
 :root {
-  --bg: #ffffff;
-  --fg: #10221c;
-  --muted: #5c6b66;
-  --border: #d8e0dd;
-  --accent: #0f6b4f;
-  --accent-fg: #ffffff;
-  --error-bg: #fdecec;
-  --error-fg: #94191b;
-  --reply-bg: #f3f7f5;
+  color-scheme: light;
+
+  --brand: #1e50c8;
+  --brand-strong: #17409f;
+  --brand-soft: #e8eefc;
+  --brand-contrast: #ffffff;
+
+  --background: #f6f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f1f3f9;
+  --foreground: #131824;
+  --muted: #5b6478;
+
+  --border-subtle: #dfe3ec;
+  --border-strong: #c3cad9;
+
+  --ok: #1a7f4b;
+  --ok-soft: #e6f4ec;
+  --warn: #8a5a00;
+  --warn-soft: #fdf2dd;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e8;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  --shadow-lg: 0 12px 28px rgb(16 24 40 / 18%);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand: #6f9bff;
+  --brand-strong: #8fb2ff;
+  --brand-soft: #17233f;
+  --brand-contrast: #0a1020;
+
+  --background: #0a1020;
+  --surface: #141b2d;
+  --surface-muted: #1b2438;
+  --foreground: #eef2fb;
+  --muted: #9aa5bd;
+
+  --border-subtle: #26304a;
+  --border-strong: #3a4767;
+
+  --ok: #5cc98d;
+  --ok-soft: #12301f;
+  --warn: #e3b160;
+  --warn-soft: #322510;
+  --danger: #f08c86;
+  --danger-soft: #351816;
+
+  --shadow-lg: 0 12px 28px rgb(0 0 0 / 45%);
 }
 
 * {
@@ -17,136 +80,554 @@
 }
 
 body {
-  width: 360px;
+  inline-size: 360px;
+  min-block-size: 420px;
   margin: 0;
-  padding: 12px 14px 16px;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: "Segoe UI", "Noto Sans Arabic", system-ui, sans-serif;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 
+/* ---------------------------------------------------------------- الرأس */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface);
+  border-block-end: 1px solid var(--border-subtle);
 }
 
-.header h1 {
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brand h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.field-label,
-.settings label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 13px;
+.brand__tagline {
+  margin: 0;
+  font-size: 11px;
   color: var(--muted);
 }
 
-textarea,
-input[type="url"] {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
-  color: inherit;
-  background: var(--bg);
-  resize: vertical;
+/* ------------------------------------------------------- مبدّل المظهر */
+.theme {
+  position: relative;
+  display: inline-flex;
 }
 
-textarea:focus,
-input[type="url"]:focus {
-  outline: 2px solid var(--accent);
+.theme__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 32px;
+  block-size: 32px;
+  background-color: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.theme__trigger:hover {
+  background-color: var(--surface-muted);
+  color: var(--foreground);
+}
+
+.theme__trigger svg {
+  inline-size: 16px;
+  block-size: 16px;
+}
+
+.theme__menu {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-1));
+
+  /* ⚠️ `inset-inline-start` لا `inset-inline-end`: في RTL جهة `inline-end`
+     هي **اليسار**، وتثبيتها كان يمدّ القائمة نحو خارج النافذة فتُقتطع.
+     بـ`inline-start` تُحاذي بداية الزرّ وتنمو نحو داخل النافذة. */
+  inset-inline-start: 0;
+
+  z-index: 20;
+  min-inline-size: 120px;
+  /* حدٌّ أخير: القائمة تضيق ولا تخرج من إطار النافذة أبدًا. */
+  max-inline-size: calc(360px - 2 * var(--space-4));
+  padding: var(--space-1);
+  background-color: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.theme__item {
+  display: block;
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-3);
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
+.theme__item:hover {
+  background-color: var(--surface-muted);
+}
+
+.theme__item[aria-checked="true"] {
+  background-color: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* -------------------------------------------------- مؤشّر الخطوات */
+.steps {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.steps[aria-hidden="true"] {
+  display: none;
+}
+
+.steps__dot {
+  block-size: 3px;
+  flex: 1;
+  border-radius: 999px;
+  background-color: var(--border-subtle);
+}
+
+.steps__dot[data-state="done"] {
+  background-color: var(--brand);
+}
+
+.steps__dot[data-state="current"] {
+  background-color: var(--brand);
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------------------ الشاشات */
+.main {
+  flex: 1;
+  padding: var(--space-4);
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.screen__title {
+  margin: 0 0 var(--space-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.screen__lead {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 40px;
+  block-size: 40px;
+  margin-block-end: var(--space-3);
+  border-radius: 999px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.status--ok {
+  background-color: var(--ok-soft);
+  color: var(--ok);
+}
+
+.status--warn {
+  background-color: var(--warn-soft);
+  color: var(--warn);
+}
+
+.status--danger {
+  background-color: var(--danger-soft);
+  color: var(--danger);
+}
+
+.checklist {
+  margin: 0 0 var(--space-3);
+  padding-inline-start: var(--space-4);
+  color: var(--foreground);
+}
+
+.checklist li {
+  margin-block-end: var(--space-1);
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface-muted);
+  border-inline-start: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* تحذير قبل فعل لا يُلغى: استبدال الجهاز يوقف GovMind على حاسب آخر،
+   فيأخذ لون التحذير لا لون الملاحظة العادية. */
+.note--warn {
+  background-color: var(--warn-soft);
+  border-inline-start-color: var(--warn);
+  color: var(--warn);
+}
+
+/* --------------------------------------------------------- الحقائق */
+.facts {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: 3px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------- النماذج */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.field__input {
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.field__input:focus-visible {
+  outline: 2px solid var(--brand);
   outline-offset: 1px;
+  border-color: var(--brand);
 }
 
-.primary-button,
-.secondary-button {
-  margin-top: 8px;
-  padding: 8px 14px;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
+/* --------------------------------------------------------- الأزرار */
+.button {
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 60ms ease;
+}
+
+/* ⚠️ **حلقة تركيز ظاهرة.** من يتنقّل بلوحة المفاتيح يجب أن يرى أين هو.
+   `:focus-visible` لا `:focus`: لا تظهر الحلقة لمن ضغط بالفأرة. */
+.button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* انخفاض طفيف عند الضغط — تأكيد لمسيّ أن الضغطة وصلت. */
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* حركة تُلغى لمن طلب تقليل الحركة في نظامه. */
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+
+  .button:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+.button--primary {
+  background-color: var(--brand);
+  color: var(--brand-contrast);
+}
+
+.button--primary:hover:not(:disabled) {
+  background-color: var(--brand-strong);
+}
+
+.button--primary:active:not(:disabled) {
+  background-color: var(--brand-strong);
+}
+
+/* زرّ ثانوي **محدَّد الإطار**: يُقرأ زرًّا لا نصًّا، ويتباين مع الأول
+   بالشكل لا باللون وحده. */
+.button--outline {
+  background-color: transparent;
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.button--outline:hover:not(:disabled) {
+  background-color: var(--brand-soft);
+}
+
+.button--outline:active:not(:disabled) {
+  background-color: var(--brand-soft);
+  border-color: var(--brand-strong);
+}
+
+/* حجم القرار: هدف لمس مريح لخيارٍ هو كل الخطوة. */
+.button--lg {
+  padding: var(--space-3) var(--space-4);
+  font-size: 14px;
+  min-block-size: 44px;
+}
+
+.button--secondary {
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--foreground);
+}
+
+.button--secondary:hover:not(:disabled) {
+  background-color: var(--surface-muted);
+}
+
+.button--ghost {
+  background-color: transparent;
+  color: var(--muted);
+}
+
+.button--ghost:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------ شريط التقدّم */
+.progress {
+  block-size: 8px;
+  margin-block-end: var(--space-2);
+  overflow: hidden;
+  background-color: var(--surface-muted);
+  border-radius: 999px;
+}
+
+.progress__bar {
+  block-size: 100%;
+  inline-size: 0%;
+  background-color: var(--brand);
+  border-radius: 999px;
+  transition: inline-size 0.25s ease;
+}
+
+/* التنزيل بلا حجم كلي معروف: حركة مستمرة بدل نسبة كاذبة. */
+.progress__bar[data-indeterminate="true"] {
+  inline-size: 40%;
+  animation: progress-slide 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes progress-slide {
+  from {
+    margin-inline-start: 0;
+  }
+  to {
+    margin-inline-start: 60%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress__bar {
+    transition: none;
+    animation: none;
+  }
+}
+
+.progress__label {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ التنبيه */
+.alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--danger-soft);
+  border-inline-start: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.alert[hidden] {
+  display: none;
+}
+
+.alert__message {
+  margin: 0;
+}
+
+.alert__action {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  background-color: transparent;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font: inherit;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.primary-button {
-  width: 100%;
-  background: var(--accent);
-  color: var(--accent-fg);
+/* ------------------------------------------------------------ التذييل */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--surface);
+  border-block-start: 1px solid var(--border-subtle);
+  color: var(--muted);
+  font-size: 11px;
 }
 
-.secondary-button {
-  background: var(--bg);
-  color: var(--accent);
+.footer[hidden] {
+  display: none;
 }
 
-.primary-button:disabled,
-.secondary-button:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.link-button {
-  background: none;
-  border: none;
+.footer__link {
   padding: 0;
-  color: var(--accent);
+  background: none;
+  border: 0;
+  color: var(--brand);
   font: inherit;
+  font-weight: 700;
   cursor: pointer;
+}
+
+/* ------------------------------------------------- التبديل بين الشاشتين */
+/* رابط نصّي لا زرّ ممتلئ: «إنشاء حساب» إجراء ثانوي بجانب الدخول، وزرّان
+   ممتلئان متجاوران يجعلان المستخدم يتردّد أيهما المقصود. */
+.switcher {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.switcher__link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.switcher__link:hover {
   text-decoration: underline;
 }
 
-.settings {
-  margin-bottom: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--reply-bg);
+.field__hint {
+  color: var(--muted);
+  font-size: 11px;
 }
 
-.hint {
-  margin: 6px 0 0;
+/* ------------------------------------------------- اختيار طريقة البدء */
+/* ⚠️ **شارة الصدق.** النسخة أكاديمية ولا رسوم فيها، والشارة تقول ذلك قبل
+   أن يقرأ المستخدم كلمة «اشتراك» أو «شهري» فيظنّ أن هناك ما يُدفع. */
+.demo-badge {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--warn-soft);
+  border: 1px dashed var(--warn);
+  border-radius: var(--radius-sm);
+  color: var(--warn);
   font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ⚠️ **زرّان بعرض النافذة، لا بطاقتان.** الخطوة كلها اختيار، فالخيار
+   نفسه هو ما يُعرض — لا عنوانٌ وقائمةُ مزايا فوقه تجعله تفصيلًا في صفحة
+   تعريف. */
+.plan-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+
+/* ملصق صغير تحت الزرّ المعطّل: يقول سبب التعطيل بدل أن يتركه لغزًا. */
+.plan-note {
+  margin: calc(var(--space-2) * -1) 0 0;
   color: var(--muted);
-}
-
-.loading {
-  margin: 10px 0 0;
-  color: var(--muted);
-}
-
-.error {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--error-bg);
-  color: var(--error-fg);
-}
-
-.reply-box {
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--reply-bg);
-}
-
-.reply-title {
-  margin: 0 0 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.reply {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
+  font-size: 12px;
+  text-align: center;
 }

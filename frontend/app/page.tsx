@@ -1,11 +1,10 @@
-import ChatPanel from "@/components/ChatPanel";
-import Sidebar from "@/components/Sidebar";
+import RequireAuth from "@/components/RequireAuth";
+import Workspace from "@/components/Workspace";
 
 export default function Home() {
   return (
-    <main className="flex min-h-dvh">
-      <Sidebar />
-      <ChatPanel />
-    </main>
+    <RequireAuth>
+      <Workspace />
+    </RequireAuth>
   );
 }

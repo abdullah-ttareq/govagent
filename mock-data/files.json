@@ -1,0 +1,79 @@
+{
+  "_note": "بيانات ملفات تجريبية خيالية بالكامل. الملفات نفسها في mock-data/files/، ومحتواها مُختلَق ولا يمثل أي وثيقة حكومية حقيقية.",
+  "_schema": {
+    "path": "مسار الملف داخل المستودع — يُرفع بـPOST /api/files",
+    "original_name": "الاسم كما يرسله الموظف. يبقى بيانًا وصفيًا في القاعدة فقط، ولا يُستخدم في مسار القرص إطلاقًا",
+    "uploaded_by_email": "رافع الملف — يطابق مستخدمًا في organizations.json",
+    "organization_id": "جهة الملف. إعلامي فقط: الـBackend يشتقها من رمز الدخول",
+    "expected_status": "حالة الرفع المتوقعة: processed إن نجحت الفهرسة، أو رمز HTTP إن كان الرفع نفسه يُرفض",
+    "conversation_title": "المحادثة المرتبطة بالملف إن وُجدت — يظهر حقل conversation_id لرافع الملف وحده"
+  },
+  "_scope": "الملف معرفةٌ مشتركة داخل الجهة: كل موظفي الجهة يقرؤون بياناته ومحتواه عبر البحث، والتعديل والحذف لرافعه أو لمسؤول الجهة. أما المحادثة فخاصة بصاحبها وحده.",
+  "files": [
+    {
+      "_note": "نص عربي عادي — أبسط حالة نجاح، ومحتواه هو ما تستشهد به إجابات الإجازات في conversations.json.",
+      "path": "mock-data/files/لائحة-الإجازات.txt",
+      "original_name": "لائحة-الإجازات.txt",
+      "mime_type": "text/plain; charset=utf-8",
+      "extension": ".txt",
+      "size_bytes": 2281,
+      "uploaded_by_email": "n.alharbi@digital-services.test",
+      "organization_id": 1,
+      "conversation_title": "مدة الإجازة السنوية",
+      "expected_status": "processed"
+    },
+    {
+      "_note": "مستند Word بمحتوى عربي — يتحقق من مسار استخراج النص عبر python-docx.",
+      "path": "mock-data/files/دليل-الخدمات-الإلكترونية.docx",
+      "original_name": "دليل-الخدمات-الإلكترونية.docx",
+      "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "extension": ".docx",
+      "size_bytes": 35946,
+      "uploaded_by_email": "f.alqahtani@digital-services.test",
+      "organization_id": 1,
+      "conversation_title": "أسئلة متفرقة عن الخدمات الإلكترونية",
+      "expected_status": "processed"
+    },
+    {
+      "_note": "ملف PDF — نصّه الداخلي إنجليزي عمدًا. إظهار العربية في PDF يستلزم تضمين خط عربي كامل وتشكيل الحروف يدويًا، وهو ثقل بلا فائدة للاختبار. الاسم عربي، والمطلوب أن يُستخرج نصّه ويُفهرَس.",
+      "path": "mock-data/files/نموذج-طلب-إجازة.pdf",
+      "original_name": "نموذج-طلب-إجازة.pdf",
+      "mime_type": "application/pdf",
+      "extension": ".pdf",
+      "size_bytes": 1208,
+      "uploaded_by_email": "n.alharbi@digital-services.test",
+      "organization_id": 1,
+      "conversation_title": null,
+      "expected_status": "processed"
+    },
+    {
+      "_note": "ملف الجهة الثانية — طرف اختبار العزل: موظفو الجهة الأولى لا يرونه، وطلبه بمعرّفه يعيد 404 بلا بيانات.",
+      "path": "mock-data/files/تعميم-اعتماد-المخططات.txt",
+      "original_name": "تعميم-اعتماد-المخططات.txt",
+      "mime_type": "text/plain; charset=utf-8",
+      "extension": ".txt",
+      "size_bytes": 1158,
+      "uploaded_by_email": "l.aldosari@urban-planning.test",
+      "organization_id": 2,
+      "conversation_title": "اعتماد المخططات التفصيلية",
+      "expected_status": "processed"
+    },
+    {
+      "_note": "صيغة غير مدعومة — ليس ملف جداول حقيقيًا. الـBackend يرفض بالامتداد قبل قراءة المحتوى، فلا يهم ما بداخله.",
+      "path": "mock-data/files/جدول-الميزانية.xlsx",
+      "original_name": "جدول-الميزانية.xlsx",
+      "extension": ".xlsx",
+      "size_bytes": 261,
+      "uploaded_by_email": "n.alharbi@digital-services.test",
+      "organization_id": 1,
+      "conversation_title": null,
+      "expected_status": 415,
+      "expected_detail": "صيغة الملف «.xlsx» غير مدعومة. الصيغ المدعومة: .pdf، .docx، .txt. ملفات الجداول غير مدعومة حاليًا. صدّر المحتوى إلى .pdf أو .txt."
+    }
+  ],
+  "_not_included": {
+    "_note": "حالتان لا يصلح تخزينهما كملفات في المستودع، وتُولَّدان عند الحاجة:",
+    "الحجم الزائد": "ملف أكبر من UPLOAD_MAX_BYTES (١٠ ميجابايت) يعيد 413. ملف بهذا الحجم لا يُرفع إلى Git؛ يُولَّد محليًا عند الاختبار.",
+    "بلا امتداد": "اسم ملف بلا امتداد يعيد 415 كذلك."
+  }
+}

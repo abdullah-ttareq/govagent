@@ -1,23 +1,1078 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-border-subtle: var(--border-subtle);
-  --color-brand: var(--brand);
-  --font-sans: var(--font-arabic);
-}
+/* ==========================================================================
+   نظام تصميم GovMind — P3-01
+   كل لون ومسافة وحجم نص متغيّر CSS واحد، تستهلكه أدوات Tailwind ومكوّنات
+   الواجهة معًا. لا تكتب قيمة لونية صريحة في أي مكوّن؛ استخدم متغيّرًا من هنا.
+   ========================================================================== */
 
 :root {
-  --background: #f6f7f9;
-  --foreground: #16181d;
-  --surface: #ffffff;
-  --border-subtle: #e3e6ea;
-  --brand: #1f6f5c;
+  /* لون واجهات المتصفح الأصلية (أشرطة التمرير، حقول التاريخ، الاختيار). */
+  color-scheme: light;
+
+  /* --- الألوان ---------------------------------------------------------
+     **محايد أولًا.** الوضوح يأتي من المساحات والتباين لا من كثرة الألوان:
+     رماديات فحمية للنصّ والأسطح، ولون إبراز واحد هادئ يُستعمل في الروابط
+     وحلقة التركيز وعلامة المحادثة النشطة **فقط**.
+
+     الألوان الدلالية محجوزة لمعناها: الأخضر للنجاح («نشط»)، والبرتقالي
+     للتحذير، والأحمر للخطأ. لا يظهر أيٌّ منها في شعار ولا زرّ ولا فقاعة. */
+  /* ⚠️ **رماديات دافئة لا محايدة.** التصميم المعتمد يبني على عاجيّ
+     مائل إلى الدفء، والرماديُّ المحايد فوقه يُقرأ أزرق باهتًا بجواره.
+     كل درجة هنا تحمل الميل نفسه، فتبقى الأسطح عائلة واحدة. */
+  --background: #efece4;
+  --surface: #fbf9f5;
+  --surface-muted: #f1ede4;
+  /* الشريط الجانبي أغمق بدرجة واحدة — يفصله عن المحادثة بلا حدّ ثقيل. */
+  --surface-sidebar: #f2eee6;
+  --surface-raised: #ffffff;
+  --foreground: #1f1d1a;
+  --muted: #8a8175;
+  --border-subtle: #e2dcd0;
+  /* حدّ عناصر التحكم: 3.2:1 على السطح — يحقّق WCAG 1.4.11. */
+  --border-strong: #93887a;
+
+  /* لون الفعل الأساسي: فحميّ دافئ — زرّ «محادثة جديدة» وفقاعة المستخدم. */
+  --brand: #1c1a17;
+  --brand-strong: #2e2b26;
+  --brand-soft: #ede8de;
+  --brand-contrast: #faf8f4;
+
+  /* ⚠️ **الإبراز الذهبيّ: لونٌ واحد ونقاط قليلة.** حلقة الشعار، وأرقام
+     القوائم، وزرّ الإرسال، وحدّ المحادثة النشطة — لا خلفيات واسعة به.
+     نسبته على السطح الفاتح 4.6:1، فيصلح للنصّ الصغير كأرقام القوائم. */
+  --accent: #9c7c3f;
+  --accent-soft: #f4eddd;
+
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --danger-border: #fbcfca;
+  --danger-contrast: #ffffff;
+
+  --success: #067647;
+  --success-soft: #ecfdf3;
+
+  --warning: #c2410c;
+  --warning-soft: #fff5ed;
+
+  --focus-ring: #9c7c3f59;
+  --scrim: rgb(28 26 23 / 0.45);
+  --shadow-color: 28 26 23;
+  --danger-ring: rgb(180 35 24 / 0.25);
+
+  /* --- المسافات -------------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* --- أحجام النص ------------------------------------------------------
+     أصغر حجم ١٤px عمدًا: العربية تفقد وضوح التشكيل والنقاط تحت ذلك على
+     شاشات الجوال. */
+  --text-xs: 0.8125rem; /* 13px — للبيانات الثانوية فقط */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.375rem; /* 22px */
+  --text-2xl: 1.75rem; /* 28px */
+
+  --leading-body: 1.85; /* العربية تحتاج ارتفاع سطر أكبر من اللاتينية */
+  --leading-tight: 1.4;
+
+  /* --- الحواف والظلال --------------------------------------------------- */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-full: 999px;
+
+  /* لون الظلّ متغيّر: ظلّ رمادي فاتح لا يُرى على سطح داكن، فيصير أسود. */
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.06);
+  --shadow-md: 0 4px 16px rgb(var(--shadow-color) / 0.10);
+  --shadow-lg: 0 12px 32px rgb(var(--shadow-color) / 0.16);
+
+  --control-height: 2.875rem; /* ٤٦px — هدف لمس مريح على الجوال */
+}
+
+/* ==========================================================================
+   الوضع الداكن
+
+   **فحميّ محايد لا أسود صريح.** الأسود الصافي على شاشة مضيئة يرفع التباين
+   فوق المريح ويجعل حواف النص تهتزّ، والعربية بتشكيلها أشدّ تأثرًا. الأسطح
+   هنا رماديات فحمية متدرّجة (شريط جانبي ← خلفية ← سطح ← سطح مرتفع).
+
+   **الزرّ الأساسي ينقلب:** فحميّ على فاتح في الوضع الفاتح، وفاتح على فحميّ
+   في الداكن — تباينٌ عالٍ في الحالتين بلا لون هوية صارخ.
+
+   يُفعَّل بسمة `data-theme="dark"` على `<html>` يضعها سكربت في `layout.tsx`
+   قبل أول رسم، فلا وميض.
+   ========================================================================== */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* فحميّ محايد لا أسود صريح: أعمق درجة #17181a، وبلا أي ميل لوني. */
+  /* فحميّ دافئ لا أسود صريح، ويحمل ميل العاجيّ نفسه معكوسًا. */
+  --background: #0e0d0b;
+  --surface: #17150f;
+  --surface-muted: #221f18;
+  /* الشريط الجانبي أغمق بدرجة — عكس الوضع الفاتح في الاتجاه نفسه. */
+  --surface-sidebar: #131109;
+  --surface-raised: #1d1a13;
+  --foreground: #ece5d6;
+  --muted: #94897a;
+  --border-subtle: #2b2720;
+  /* 3.3:1 على السطح الداكن. */
+  --border-strong: #6f6555;
+
+  /* في الداكن ينقلب الزرّ الأساسي: سطح عاجيّ بنصّ فحميّ. */
+  --brand: #e8e0cf;
+  --brand-strong: #f5efe2;
+  --brand-soft: #221f18;
+  --brand-contrast: #17150f;
+
+  /* الذهبيّ أنصع على الفحميّ ليبلغ نسبة التباين نفسها. */
+  --accent: #c9a86a;
+  --accent-soft: #241f14;
+
+  --danger: #ff9086;
+  --danger-soft: #2b1613;
+  --danger-border: #5c2b25;
+  --danger-contrast: #2b0f0b;
+
+  --success: #56cf95;
+  --success-soft: #10291f;
+
+  --warning: #f9a75c;
+  --warning-soft: #2e1d0e;
+
+  --focus-ring: #c9a86a59;
+  --scrim: rgb(8 9 10 / 0.66);
+  --shadow-color: 0 0 0;
+  --danger-ring: rgb(255 144 134 / 0.28);
+}
+
+/* جسر بين متغيّرات النظام وأدوات Tailwind: bg-surface و text-brand وغيرها. */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-surface-sidebar: var(--surface-sidebar);
+  /* حجاب الدرج على الشاشات الضيقة — من المتغيّر لا لونًا صريحًا. */
+  --color-scrim: var(--scrim);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-brand-contrast: var(--brand-contrast);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+
+  --font-sans: var(--font-arabic);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+html {
+  /* لا تكبير تلقائي لحجم النص عند تدوير الجوال. */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+}
+
+/* تركيز واضح بلوحة المفاتيح في كل الواجهة، ولا حلقة تركيز على نقر الفأرة. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+/* ==========================================================================
+   مكوّنات موحّدة — أزرار وحقول ورسائل
+   ========================================================================== */
+
+@layer components {
+  /* --- الأزرار --------------------------------------------------------- */
+  .gv-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding-inline: var(--space-5);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      opacity 0.15s ease;
+  }
+
+  .gv-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .gv-btn--primary {
+    background-color: var(--brand);
+    color: var(--brand-contrast);
+  }
+
+  .gv-btn--primary:hover:not(:disabled) {
+    background-color: var(--brand-strong);
+  }
+
+  .gv-btn--secondary {
+    background-color: var(--surface);
+    border-color: var(--border-strong);
+    color: var(--foreground);
+  }
+
+  .gv-btn--secondary:hover:not(:disabled) {
+    background-color: var(--surface-muted);
+  }
+
+  .gv-btn--ghost {
+    background-color: transparent;
+    color: var(--muted);
+    padding-inline: var(--space-3);
+  }
+
+  .gv-btn--ghost:hover:not(:disabled) {
+    background-color: var(--surface-muted);
+    color: var(--foreground);
+  }
+
+  .gv-btn--danger {
+    background-color: var(--danger);
+    color: var(--danger-contrast);
+  }
+
+  .gv-btn--danger:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
+
+  .gv-btn--block {
+    width: 100%;
+  }
+
+  /* --- مبدّل المظهر ------------------------------------------------------
+     زرّ أيقونة صغير يفتح قائمة. الحالة الفعّالة تظهر في أيقونة الزرّ نفسه،
+     فلا يحتاج المستخدم فتح القائمة ليعرف الوضع الحالي. */
+  .gv-theme {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .gv-theme__trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    background-color: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .gv-theme__trigger:hover {
+    background-color: var(--surface-muted);
+    border-color: var(--border-strong);
+    color: var(--foreground);
+  }
+
+  .gv-theme__trigger[aria-expanded="true"] {
+    background-color: var(--brand-soft);
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+
+  .gv-theme__menu {
+    position: absolute;
+    /* تفتح لأعلى: مكانها المعتاد أسفل الشريط الجانبي، فالأسفل خارج الشاشة. */
+    inset-block-end: calc(100% + var(--space-2));
+
+    /* ⚠️ `inset-inline-start` لا `inset-inline-end`.
+       في RTL جهة `inline-end` هي **اليسار**، فتثبيتها على 0 كان يلصق الحافة
+       اليسرى للقائمة بالزرّ ويمدّها **يمينًا** — والزرّ نفسه ملاصق للحافة
+       اليمنى للشاشة، فكان أكثر من مئة بكسل من القائمة يخرج خارج إطار العرض
+       فتختفي الأسماء والأيقونات ولا يبقى ظاهرًا إلا أول عنصر في كل صف.
+       بـ`inline-start` تُحاذي القائمة بداية الزرّ وتنمو نحو **داخل** الصفحة،
+       فتبقى كاملة داخل الشاشة في الشريط الجانبي وفي درج الجوال معًا. */
+    inset-inline-start: 0;
+
+    z-index: 30;
+    min-inline-size: 10rem;
+    /* حدٌّ أخير على الشاشات الضيّقة جدًا: القائمة تضيق ولا تخرج أبدًا. */
+    max-inline-size: calc(100vw - 2 * var(--space-4));
+    padding: var(--space-1);
+    background-color: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* في الأعلى (صفحة الدخول) تفتح لأسفل. */
+  .gv-theme--below .gv-theme__menu {
+    inset-block-end: auto;
+    inset-block-start: calc(100% + var(--space-2));
+  }
+
+  .gv-theme__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--foreground);
+    cursor: pointer;
+    text-align: start;
+    transition: background-color 0.15s ease;
+  }
+
+  /* الاسم يأخذ ما بقي، والأيقونتان لا تنكمشان: صفٌّ ضيّق يقصّ النص لا
+     الأيقونة، فيبقى لكل خيار رمزٌ يميّزه وعلامةُ صحٍّ مقروءة. */
+  .gv-theme__item > span {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .gv-theme__item > svg {
+    flex-shrink: 0;
+  }
+
+  .gv-theme__item:hover {
+    background-color: var(--surface-muted);
+  }
+
+  .gv-theme__item[aria-checked="true"] {
+    color: var(--brand);
+  }
+
+  /* --- حقول الإدخال ---------------------------------------------------- */
+  .gv-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .gv-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+  }
+
+  .gv-input {
+    width: 100%;
+    min-height: var(--control-height);
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    /* ١٦px تمنع تكبير Safari التلقائي للصفحة عند التركيز على الحقل. */
+    font-size: var(--text-base);
+    line-height: var(--leading-tight);
+    color: var(--foreground);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .gv-input:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+
+  .gv-input:disabled {
+    background-color: var(--surface-muted);
+    cursor: not-allowed;
+  }
+
+  .gv-input[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+
+  .gv-input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px var(--danger-ring);
+  }
+
+  .gv-hint {
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    color: var(--muted);
+  }
+
+  .gv-error-text {
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  /* --- الرسائل --------------------------------------------------------- */
+  .gv-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+  }
+
+  .gv-alert--error {
+    background-color: var(--danger-soft);
+    border-color: var(--danger-border);
+    color: var(--danger);
+  }
+
+  .gv-alert--success {
+    background-color: var(--success-soft);
+    border-color: color-mix(in srgb, var(--success) 25%, transparent);
+    color: var(--success);
+  }
+
+  .gv-alert--warning {
+    background-color: var(--warning-soft);
+    border-color: color-mix(in srgb, var(--warning) 25%, transparent);
+    color: var(--warning);
+  }
+
+  .gv-alert--info {
+    background-color: var(--brand-soft);
+    border-color: color-mix(in srgb, var(--brand) 25%, transparent);
+    color: var(--brand-strong);
+  }
+
+  /* --- الشريط الجانبي --------------------------------------------------- */
+  .gv-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 17rem;
+    flex-shrink: 0;
+    background-color: var(--surface-sidebar);
+    border-inline-end: 1px solid var(--border-subtle);
+  }
+
+  /* دون 768px: درج منزلق من جهة البداية (اليمين في RTL) فوق المحتوى. */
+  @media (width < 48rem) {
+    .gv-sidebar {
+      position: fixed;
+      inset-block: 0;
+      inset-inline-start: 0;
+      z-index: 40;
+      width: min(17rem, 85vw);
+      /* الإزاحة بالخاصية المنطقية: 100% تخرجه من جهة البداية في الاتجاهين. */
+      transform: translateX(0);
+      transition: transform 0.2s ease;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .gv-sidebar:not(.gv-sidebar--open) {
+      /* في RTL جهة البداية هي اليمين، فالخروج بقيمة موجبة. */
+      transform: translateX(100%);
+      visibility: hidden;
+    }
+
+    [dir="ltr"] .gv-sidebar:not(.gv-sidebar--open) {
+      transform: translateX(-100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gv-sidebar {
+      transition: none;
+    }
+  }
+
+  /* --- ترويسة الشريط الجانبي ------------------------------------------- */
+  .gv-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  /* مربّع الهوية: يعطي الترويسة ثقلًا بصريًا ويوازن محاذاتها. */
+  /* ⚠️ **حلقة ذهبية لا مربّع أسود بحرف.**
+     التصميم المعتمد يجعل العلامة حلقةً مفرغة بنقطة في مركزها، بلون
+     الإبراز وحده. حرفٌ داخل مربّع داكن كان يسحب الانتباه إلى زاوية
+     الشريط ويتنافس مع اسم المنتج بجواره. */
+  .gv-brand__mark {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border: 2px solid var(--accent);
+    border-radius: 9999px;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .gv-brand__mark::after {
+    content: "";
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
+    border-radius: 9999px;
+    background-color: var(--accent);
+  }
+
+  /* الحلقة المصمتة: تسبق ردّ المساعد في المحادثة. */
+  .gv-brand__mark--hollow::after {
+    background-color: transparent;
+  }
+
+  /* مبدّل المظهر: شريحتان في غلاف واحد. */
+  .gv-theme__seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    border-radius: 9999px;
+    background-color: var(--surface-muted);
+  }
+
+  .gv-theme__seg > button {
+    display: grid;
+    place-items: center;
+    inline-size: 1.625rem;
+    block-size: 1.625rem;
+    border-radius: 9999px;
+    color: var(--muted);
+    transition: background-color 120ms, color 120ms;
+  }
+
+  .gv-theme__seg > button[aria-pressed="true"] {
+    background-color: var(--brand);
+    color: var(--brand-contrast);
+  }
+
+  /* عنوان قسم داخل الشريط الجانبي. */
+  .gv-section-label {
+    padding-inline: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--muted);
+  }
+
+  /* --- أدوات عامة -------------------------------------------------------- */
+  /* سطران ثم قصّ — للأوصاف الطويلة داخل عمود ضيّق. */
+  .gv-clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* خلفية الطبقات العائمة — تتبع الوضع بدل `bg-black/40` الثابت. */
+  .gv-scrim {
+    position: fixed;
+    inset: 0;
+    background-color: var(--scrim);
+  }
+
+  /* البريد وأسماء الملفات والمسارات: لاتينية داخل واجهة عربية.
+     `plaintext` يجعل الاتجاه يتبع أول حرف قويّ، فلا تهاجر النقطة أو
+     الشرطة إلى الطرف الخطأ. */
+  .gv-ltr-text {
+    unicode-bidi: plaintext;
+    text-align: start;
+  }
+
+  /* --- فقاعات المحادثة --------------------------------------------------- */
+  .gv-bubble {
+    max-width: 88%;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    line-height: 1.75;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    /* رسالة عربية فيها مصطلح إنجليزي تبقى مقروءة في الاتجاهين. */
+    unicode-bidi: plaintext;
+    text-align: start;
+  }
+
+  @media (width >= 40rem) {
+    .gv-bubble {
+      max-width: 76%;
+    }
+  }
+
+  /* رسالة الموظف: سطح رمادي خفيف — تمييزٌ كافٍ بلا كتلة لون صارخة. */
+  .gv-bubble--user {
+    background-color: var(--surface-muted);
+    color: var(--foreground);
+    border-start-end-radius: var(--radius-sm);
+  }
+
+  /* رد الإيجنت: **بلا صندوق** — نصٌّ يمتدّ في عمود القراءة كما في تطبيقات
+     المحادثة الحديثة. الإطار حول كل رد يجعل الصفحة قائمة بطاقات. */
+  .gv-bubble--assistant {
+    max-width: 100%;
+    padding-inline: 0;
+    padding-block: var(--space-1);
+    background-color: transparent;
+    color: var(--foreground);
+  }
+
+  /* --- مصادر الرد -------------------------------------------------------- */
+  .gv-sources {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-start: var(--space-3);
+    padding-block-start: var(--space-3);
+    border-block-start: 1px solid var(--border-subtle);
+  }
+
+  .gv-source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-inline-size: 100%;
+    padding: 2px var(--space-2);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    color: var(--muted);
+  }
+
+  .gv-source-chip > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    unicode-bidi: plaintext;
+  }
+
+  /* --- بطاقة إحصاء --------------------------------------------------------- */
+  .gv-stat {
+    padding: var(--space-4);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .gv-stat__label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .gv-stat__value {
+    margin-block-start: var(--space-1);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    line-height: var(--leading-tight);
+  }
+
+  /* --- صفّ محادثة — بطاقة لا سطر ---------------------------------------- */
+  .gv-conversation {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-inline: var(--space-3);
+    padding-block: var(--space-1);
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .gv-conversation:hover {
+    background-color: var(--surface-muted);
+  }
+
+  .gv-conversation > button:first-child {
+    padding-block: var(--space-2);
+    cursor: pointer;
+  }
+
+  /* النشطة: خلفية العلامة **وشريط على حافة البداية** — تمييز بغير اللون وحده. */
+  .gv-conversation--active,
+  .gv-conversation--active:hover {
+    background-color: var(--surface-muted);
+    box-shadow: inset 2px 0 0 0 var(--accent);
+  }
+
+  [dir="ltr"] .gv-conversation--active,
+  [dir="ltr"] .gv-conversation--active:hover {
+    box-shadow: inset -2px 0 0 0 var(--accent);
+  }
+
+  .gv-conversation__actions {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  /* الإظهار عند المرور أو التركيز أو على المحادثة النشطة. */
+  .gv-conversation:hover .gv-conversation__actions,
+  .gv-conversation:focus-within .gv-conversation__actions,
+  .gv-conversation--active .gv-conversation__actions {
+    opacity: 1;
+  }
+
+  /* على الأجهزة اللمسية لا وجود لـhover، فالأزرار ظاهرة دائمًا. */
+  @media (hover: none) {
+    .gv-conversation__actions {
+      opacity: 1;
+    }
+  }
+
+  .gv-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* ٣٤px: هدف لمس مقبول في صفّ ضيّق. */
+    width: 2.125rem;
+    height: 2.125rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .gv-icon-btn:hover {
+    background-color: var(--surface-muted);
+    color: var(--foreground);
+  }
+
+  .gv-icon-btn--danger:hover {
+    background-color: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  .gv-icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  /* بارتفاع حقل الإدخال، ليستوي معه في صفّ الكتابة. */
+  .gv-icon-btn--lg {
+    width: var(--control-height);
+    height: var(--control-height);
+    border: 1px solid var(--border-strong);
+  }
+
+  /* --- صندوق الكتابة ------------------------------------------------------
+     الحقل وزرّا الإرفاق والإرسال داخل إطار واحد، فيقرؤها المستخدم كعنصر
+     تحكّم واحد بدل ثلاثة عناصر متفرّقة بعرض الشاشة. */
+  .gv-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background-color: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .gv-composer:focus-within {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+
+  /* الحقل بلا إطار خاص: الإطار للصندوق كله. */
+  .gv-composer__input {
+    flex: 1;
+    min-width: 0;
+    align-self: center;
+    max-height: 11rem;
+    padding: var(--space-2) var(--space-2);
+    background: transparent;
+    border: 0;
+    resize: none;
+    font-size: var(--text-base);
+    line-height: 1.6;
+    color: var(--foreground);
+  }
+
+  .gv-composer__input:focus {
+    outline: none;
+  }
+
+  /* أزرار الصندوق بحجم واحد، فلا يبدو أحدها أثقل من الآخر. */
+  .gv-composer__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .gv-composer__btn:hover:not(:disabled) {
+    background-color: var(--surface-muted);
+    color: var(--foreground);
+  }
+
+  .gv-composer__btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .gv-composer__send {
+    background-color: var(--brand);
+    color: var(--brand-contrast);
+  }
+
+  .gv-composer__send:hover:not(:disabled) {
+    background-color: var(--brand-strong);
+    color: var(--brand-contrast);
+  }
+
+  .gv-composer__send:disabled {
+    background-color: var(--border-subtle);
+    color: var(--muted);
+  }
+
+  /* --- بطاقات الاقتراح في الحالة الفارغة --------------------------------- */
+  .gv-suggestion {
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    text-align: start;
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  .gv-suggestion:hover {
+    background-color: var(--brand-soft);
+    border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+  }
+
+  /* --- المرفقات ---------------------------------------------------------- */
+  .gv-attachment {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .gv-progress {
+    block-size: 0.375rem;
+    background-color: var(--border-subtle);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+
+  .gv-progress__bar {
+    block-size: 100%;
+    background-color: var(--brand);
+    border-radius: var(--radius-full);
+    transition: inline-size 0.2s ease;
+  }
+
+  /* --- منطقة الإفلات ------------------------------------------------------ */
+  .gv-dropzone {
+    position: absolute;
+    inset: var(--space-3);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* مؤشّر بصري لا هدف إفلات: مستقبِل الإفلات هو اللوحة كلها، فلو ابتلع
+       هذا الغطاء الحدث لفشل الإفلات على حوافها. */
+    pointer-events: none;
+    background-color: color-mix(in srgb, var(--brand-soft) 92%, transparent);
+    border: 2px dashed var(--brand);
+    border-radius: var(--radius-lg);
+  }
+
+  .gv-dropzone__label {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--brand-strong);
+    text-align: center;
+  }
+
+  /* --- الجداول ----------------------------------------------------------- */
+  /* الجدول يمرَّر داخل غلافه وحده، فلا تمرير أفقي للصفحة على الجوال. */
+  .gv-table-wrap {
+    overflow-x: auto;
+    /* في RTL وحده يتسرّب فائض عرض الجدول إلى تمرير الصفحة رغم
+       `overflow-x: auto`: الفائض يمتد يسارًا، فيرفع `scrollWidth` للمستند.
+       `contain: paint` يقصر الرسم على هذا الصندوق فينقطع التسريب.
+       مقيس على عرض ٣٦٠ بكسل: ٤٧٨ ← ٣٦٠. */
+    contain: paint;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .gv-table {
+    width: 100%;
+    min-width: 34rem;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  .gv-table th,
+  .gv-table td {
+    padding: var(--space-3) var(--space-4);
+    /* text-start لا text-right: يتبع اتجاه المستند. */
+    text-align: start;
+    vertical-align: middle;
+  }
+
+  .gv-table thead th {
+    background-color: var(--surface-muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .gv-table tbody tr + tr {
+    border-block-start: 1px solid var(--border-subtle);
+  }
+
+  /* --- الشارات ----------------------------------------------------------- */
+  .gv-badge {
+    display: inline-block;
+    padding: 0.125rem var(--space-3);
+    background-color: var(--surface-muted);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .gv-badge--ok {
+    background-color: var(--success-soft);
+    color: var(--success);
+  }
+
+  .gv-badge--off {
+    background-color: var(--surface-muted);
+    color: var(--muted);
+  }
+
+  /* --- النافذة الحوارية -------------------------------------------------- */
+  .gv-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    background-color: var(--scrim);
+  }
+
+  .gv-modal {
+    width: 100%;
+    max-width: 28rem;
+    padding: var(--space-5);
+    background-color: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* --- هيكل تحميل -------------------------------------------------------- */
+  .gv-skeleton {
+    background-color: var(--surface-muted);
+    border-radius: var(--radius-md);
+    animation: gv-pulse 1.6s ease-in-out infinite;
+  }
+
+  /* --- مؤشّر انتظار ----------------------------------------------------- */
+  .gv-spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+    border-radius: var(--radius-full);
+    animation: gv-spin 0.7s linear infinite;
+  }
+}
+
+@keyframes gv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gv-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gv-spinner {
+    animation-duration: 2s;
+  }
+
+  .gv-skeleton {
+    animation: none;
+  }
 }
