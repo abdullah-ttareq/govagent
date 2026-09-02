@@ -187,9 +187,9 @@ begin
   if CurUninstallStep = usPostUninstall then
   begin
     DataDir := ExpandConstant('{commonappdata}\{#AppName}');
-    if MsgBox('هل تريد حذف ملف المودل وبيانات تفعيل هذا الجهاز أيضًا؟' + #13#10 +
-              'الحذف يعني إعادة تنزيل المودل وإعادة التفعيل عند التثبيت مرة أخرى، ' +
-              'وقد يحتاج التفعيل الجديد إلغاء تفعيل الجهاز السابق من مسؤول النظام.',
+    if MsgBox('هل تريد حذف ملف المودل وبيانات ربط هذا الجهاز أيضًا؟' + #13#10 +
+              'الحذف يعني إعادة تنزيل المودل وإعادة الربط من إضافة المتصفح ' +
+              'عند التثبيت مرة أخرى.',
               mbConfirmation, MB_YESNO) = IDYES then
     begin
       DelTree(DataDir, True, True, True);

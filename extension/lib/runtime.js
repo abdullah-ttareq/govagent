@@ -12,6 +12,7 @@
  */
 
 import {
+  RUNTIME_DISCOVERY_TIMEOUT_MS,
   RUNTIME_POLL_MS,
   RUNTIME_PORTS,
   RUNTIME_PROBE_TIMEOUT_MS,
@@ -25,18 +26,59 @@ export class RuntimeUnavailableError extends Error {
   }
 }
 
-/** فشل تسليم رمز التركيب إلى الـRuntime. */
+/**
+ * **رفض التفعيل** — وصل رمز التركيب إلى الـRuntime ورُدّ عليه بالرفض.
+ *
+ * ⚠️ **غير :class:`HandoverFailedError`.** هنا وصل الرمز وسُلّم إلى الخادم
+ * ورُفض — اشتراك لا يسمح، أو جهاز آخر مفعّل — والإجراء تجديدُ اشتراك أو
+ * استبدالُ جهاز. هناك لم يصل الرمز أصلًا، والإجراء إكمالُ التثبيت.
+ * خلطُ الحالتين يعطي المستخدم إجراءً لا يحلّ مشكلته.
+ */
 export class ActivationFailedError extends Error {
-  constructor(message) {
+  constructor(message, status = 0) {
     super(message);
     this.name = "ActivationFailedError";
+    /** رمز حالة رد الـRuntime، أو صفر إن لم يصل رد. */
+    this.status = status;
   }
 }
 
-/** يجرّب منفذًا واحدًا. يعيد الحالة أو `null` إن لم يستجب. */
-async function probe(port) {
+/** **تعذّر التسليم** — لم يصل رمز التركيب إلى الـRuntime أصلًا. */
+export class HandoverFailedError extends Error {
+  constructor(message, status = 0) {
+    super(message);
+    this.name = "HandoverFailedError";
+    this.status = status;
+  }
+}
+
+/**
+ * رموز حالة تعني «لم يصل الرمز إلى وجهته» لا «رُفض».
+ *
+ * `502` يردّها الـRuntime حين يتعذّر عليه الوصول إلى خدمة GovMind،
+ * و`500` حين يتعذّر عليه حفظ ربط الجهاز على القرص. كلاهما عطلٌ في الطريق
+ * لا حكمٌ على الاشتراك.
+ */
+const TRANSPORT_STATUSES = new Set([500, 502, 503, 504]);
+
+/**
+ * يجرّب منفذًا واحدًا. يعيد الحالة أو `null` إن لم يستجب.
+ *
+ * ``signal`` مهلة الاكتشاف الجماعية: قطعُها يقطع كل المنافذ معًا، فلا
+ * يطيل منفذٌ بطيء عمرَ الفحص كله.
+ */
+async function probe(port, signal, budgetMs = RUNTIME_PROBE_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RUNTIME_PROBE_TIMEOUT_MS);
+  // ⚠️ **المهلة الجماعية تغلب دائمًا.** مهلة المنفذ الواحد كانت ١٥٠٠ms
+  // بينما سقف الاكتشاف ١٠٠٠ms، فكان منفذٌ صامت يتجاوز السقف المعلن لأن
+  // مؤقّته هو من يقطعه. الحدّ الأدنى بينهما يجعل السقف صادقًا.
+  const timer = setTimeout(
+    () => controller.abort(),
+    Math.min(RUNTIME_PROBE_TIMEOUT_MS, budgetMs),
+  );
+  const relay = () => controller.abort();
+  signal?.addEventListener("abort", relay, { once: true });
+
   try {
     const response = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: controller.signal,
@@ -50,20 +92,37 @@ async function probe(port) {
     return null;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", relay);
   }
 }
 
 /**
- * يبحث عن الـRuntime مرة واحدة عبر كل المنافذ.
+ * يبحث عن الـRuntime **في كل المنافذ معًا** تحت مهلة واحدة.
  *
- * @returns {Promise<{port: number, health: object}|null>}
+ * ⚠️ **كان التتابع يكلّف سبع ثوانٍ ونصفًا قبل أول رسم.** خمسة منافذ لا
+ * يردّ أيٌّ منها — وهي حال كل جهاز قبل التثبيت — كانت تُنتظر واحدًا بعد
+ * واحد. الآن تُطلق كلها في اللحظة نفسها، ويقطعها سقفٌ واحد.
+ *
+ * وترتيب الأفضلية محفوظ: يُختار أول منفذ **في ترتيب `RUNTIME_PORTS`** ممّن
+ * ردّ، لا أسرعهم ردًّا، فتبقى النتيجة ثابتة لا تتبع تقلّب الشبكة.
+ *
+ * @returns {Promise<{port: number, health: object}|null>} و`null` تعني
+ *   «لا Runtime بعد» — وهي **الحالة الطبيعية لأول تثبيت لا خطأ**.
  */
-export async function findRuntime() {
-  for (const port of RUNTIME_PORTS) {
-    const found = await probe(port);
-    if (found) return found;
+export async function findRuntime({
+  timeoutMs = RUNTIME_DISCOVERY_TIMEOUT_MS,
+} = {}) {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), timeoutMs);
+
+  try {
+    const results = await Promise.all(
+      RUNTIME_PORTS.map((port) => probe(port, deadline.signal, timeoutMs)),
+    );
+    return results.find(Boolean) ?? null;
+  } finally {
+    clearTimeout(timer);
   }
-  return null;
 }
 
 /**
@@ -94,11 +153,15 @@ export async function waitForRuntime({ timeoutMs, shouldStop, onTick } = {}) {
 /**
  * يسلّم رمز التركيب إلى الـRuntime ليفعّل الجهاز.
  *
- * **الرمز يمرّ في جسم الطلب إلى `127.0.0.1` وحده.** الـRuntime يولّد سرّ
- * جهازه بنفسه ويستبدل الرمز بتفعيل عند الـBackend؛ الإضافة لا ترى سرّ
- * الجهاز ولا تحتاجه.
+ * **الرمز يمرّ في جسم الطلب إلى `127.0.0.1` وحده.** الـRuntime يستبدله عند
+ * الـBackend فيستلم **بيان اعتماد الجهاز** ويحفظه بـDPAPI.
  *
- * @throws {ActivationFailedError} برسالة عربية من الـRuntime.
+ * ⚠️ **الإضافة لا ترى بيان الاعتماد ولا تحتاجه ولا يعود في هذا الرد.** ما
+ * يعود لقطةُ حالة: مرحلةٌ ورسالتها. لو عاد البيان هنا لصار في متناول كل
+ * شيفرة تعمل في المتصفح، ولبطل معنى حفظه بـDPAPI أصلًا.
+ *
+ * @throws {ActivationFailedError} رُفض التفعيل — رسالة الخادم كما وردت.
+ * @throws {HandoverFailedError} لم يصل الرمز إلى وجهته.
  */
 export async function handOverToken(port, token) {
   let response;
@@ -109,7 +172,8 @@ export async function handOverToken(port, token) {
       body: JSON.stringify({ token }),
     });
   } catch {
-    throw new ActivationFailedError(
+    // لم يُفتح اتصال أصلًا: الـRuntime توقّف بين الاكتشاف والتسليم.
+    throw new HandoverFailedError(
       "تعذّر الاتصال بـGovMind على هذا الجهاز. تأكد من اكتمال التثبيت.",
     );
   }
@@ -122,9 +186,19 @@ export async function handOverToken(port, token) {
   }
 
   if (!response.ok) {
+    const detail = (body?.detail ?? "").trim();
+    if (TRANSPORT_STATUSES.has(response.status)) {
+      // ⚠️ **عطلٌ في الطريق لا رفضٌ للاشتراك.** رسالة الـRuntime تشرح
+      // السبب (لا شبكة، أو تعذّر حفظ الربط)، والإجراء إكمال التثبيت أو
+      // إعادة المحاولة — لا استبدال جهاز ولا تجديد اشتراك.
+      throw new HandoverFailedError(
+        detail || "تعذّر إكمال ربط هذا الجهاز. أعد المحاولة.",
+        response.status,
+      );
+    }
     throw new ActivationFailedError(
-      (body?.detail ?? "").trim() ||
-        "تعذّر تفعيل هذا الجهاز. أعد المحاولة من البداية.",
+      detail || "تعذّر تفعيل هذا الجهاز. أعد المحاولة من البداية.",
+      response.status,
     );
   }
   return body ?? {};

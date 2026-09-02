@@ -92,6 +92,29 @@ export function resetChrome() {
 
       show: vi.fn(),
 
+      /**
+       * يحاكي `chrome.downloads.open` بنمط الوعد كما في Manifest V3.
+       *
+       * ⚠️ **لا يشغّل شيئًا**: يسجّل الاستدعاء فقط. `__refuseOpen` يحاكي
+       * متصفحًا رفض الفتح — صلاحية غير ممنوحة أو نسخة لا تدعمه — وهي
+       * حالة يجب أن تُختبَر لأن سلوك الإضافة عندها يختلف تمامًا.
+       */
+      open: vi.fn((id) => {
+        if (chrome.downloads.__refuseOpen) {
+          return Promise.reject(new Error("Not allowed"));
+        }
+        if (!downloads.has(id)) {
+          return Promise.reject(new Error("Unknown download"));
+        }
+        chrome.downloads.__opened.push(id);
+        return Promise.resolve();
+      }),
+
+      /** معرّفات الملفات التي طُلب فتحها — للتحقق في الاختبارات. */
+      __opened: [],
+      /** يجعل الفتح التالي يفشل، كمتصفح بلا صلاحية `downloads.open`. */
+      __refuseOpen: false,
+
       // -- أدوات للاختبارات لا للإضافة --------------------------------
       /** يجعل الطلب التالي يفشل، كما يفعل متصفح يمنع التنزيل. */
       __refuse: false,
@@ -109,6 +132,23 @@ export function resetChrome() {
         item.state = error ? "interrupted" : "complete";
         if (error) item.error = error;
         else item.bytesReceived = item.totalBytes || item.bytesReceived;
+      },
+      /**
+       * يزرع تنزيلًا مكتملًا في السجل، كمن نزّل المثبّت في جلسة سابقة.
+       *
+       * تحتاجه اختبارات ما بعد التثبيت: حالتها الحقيقية أن التنزيل تمّ
+       * والنافذة أُغلقت، فلا سبيل إلى بلوغها بنقرة داخل الاختبار نفسه.
+       */
+      __seed(id, { state = "complete", filename = "GovMindSetup.exe" } = {}) {
+        downloads.set(id, {
+          id,
+          url: "https://example.invalid/GovMindSetup.exe",
+          filename,
+          state,
+          bytesReceived: 1024,
+          totalBytes: 1024,
+        });
+        if (id >= nextDownloadId) nextDownloadId = id + 1;
       },
       /** يحذف سجل التنزيل، كمن يمسحه من قائمة المتصفح. */
       __forget(id) {

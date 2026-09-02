@@ -21,13 +21,21 @@ import { BACKEND_URL, REQUEST_TIMEOUT_MS } from "../config.js";
 export const OFFLINE_MESSAGE =
   "تعذّر الاتصال بخدمة GovMind. تأكد من اتصالك بالإنترنت ثم أعد المحاولة.";
 
-/** خطأ يحمل رمز الحالة ومعرّف الخطأ النصّي من غلاف أخطاء الـBackend. */
+/**
+ * خطأ يحمل رمز الحالة ومعرّف الخطأ النصّي من غلاف أخطاء الـBackend.
+ *
+ * `detail` نصّ السيرفر **كما ورد، أو `null` إن لم يرسل شيئًا**؛ و`message`
+ * دائمًا نصّ صالح للعرض. الفصل بينهما مقصود: من يترجم الفشل يحتاج أن
+ * يعرف هل تكلّم السيرفر أصلًا، فيختار عبارته حين يصمت بدل أن يرث عبارة
+ * عامة كُتبت لغرض آخر.
+ */
 export class ApiError extends Error {
-  constructor(message, status, code) {
+  constructor(message, status, code, detail = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -79,10 +87,12 @@ export async function apiRequest(path, { method = "GET", body, token } = {}) {
 
   if (!response.ok) {
     const error = payload ?? {};
+    const detail = (error.detail ?? "").trim() || null;
     throw new ApiError(
-      (error.detail ?? "").trim() || "حدث خطأ غير متوقع. حاول مرة أخرى.",
+      detail || "حدث خطأ غير متوقع. حاول مرة أخرى.",
       response.status,
       error.code ?? "unknown_error",
+      detail,
     );
   }
 
@@ -97,12 +107,34 @@ export async function apiRequest(path, { method = "GET", body, token } = {}) {
  * `POST /api/account/login` — يعيد الجلسة وملف العمل.
  *
  * **الحقلان المرسَلان هما البريد وكلمة المرور فقط.** لا رابط ولا مفتاح ولا
- * معرّف جهة: الجهة تُقرأ على السيرفر من ملف الحساب.
+ * معرّف مساحة: كل ما يحتاجه العزل يُقرأ على السيرفر من ملف الحساب.
  */
 export function login(email, password) {
   return apiRequest("/api/account/login", {
     method: "POST",
     body: { email, password },
+  });
+}
+
+/**
+ * `POST /api/account/register` — إنشاء حساب واشتراك تجريبي.
+ *
+ * **الحقول الأربعة المرسَلة بيانات المستخدم وحدها.** لا رابط ولا مفتاح
+ * **ولا اسم جهة**: الاشتراك فردي، والمساحة التي يحتاجها عزل البيانات
+ * يولّدها السيرفر ولا يراها العميل.
+ *
+ * يعيد جلسة جاهزة إن أمكن الدخول فورًا، أو `requires_email_confirmation`
+ * إن كان المشروع يشترط تأكيد البريد.
+ */
+export function register({ fullName, email, password, confirmPassword }) {
+  return apiRequest("/api/account/register", {
+    method: "POST",
+    body: {
+      full_name: fullName,
+      email,
+      password,
+      confirm_password: confirmPassword,
+    },
   });
 }
 
@@ -120,14 +152,17 @@ export function fetchSubscription(token) {
   return apiRequest("/api/account/subscription", { token });
 }
 
-/** `POST /api/account/devices/activate` — يفعّل هذا الجهاز. */
-export function activateDevice(token, deviceId, deviceName) {
-  return apiRequest("/api/account/devices/activate", {
-    method: "POST",
-    token,
-    body: { device_id: deviceId, device_name: deviceName },
-  });
-}
+/*
+ * ⚠️ **لا `activateDevice` هنا، ولا يجوز أن يعود.**
+ *
+ * كانت الإضافة تنادي `POST /api/account/devices/activate` ببصمة عشوائية
+ * تولّدها هي، فتشغل خانةَ الجهاز الوحيدة بهوية **لا يملكها الـRuntime**.
+ * فإذا ثُبّت البرنامج وحاول تفعيل نفسه برمز التركيب رُدّ بـ23505، فيبقى
+ * الحساب عالقًا: لا برنامج يعمل ولا خانة تُفرَّغ.
+ *
+ * التفعيل من الـRuntime وحده: هو من يولّد هوية الجهاز على الحاسب (DPAPI)
+ * ويستهلك بها رمز التركيب بعد التثبيت.
+ */
 
 /**
  * `POST /api/account/devices/verify` — يتأكد أن هذا الجهاز هو المفعّل.
@@ -141,6 +176,23 @@ export function verifyDevice(token, deviceId) {
     method: "POST",
     token,
     body: { device_id: deviceId },
+  });
+}
+
+/**
+ * `POST /api/account/devices/replace` — ينقل الاشتراك إلى هذا الجهاز.
+ *
+ * ⚠️ **كلمة المرور تُرسل من جديد.** رمز الدخول وحده لا يكفي لعملية توقف
+ * GovMind على حاسب آخر؛ والتحقق يقع على السيرفر لا هنا.
+ *
+ * الإبطال والتفعيل عملية واحدة في القاعدة، فلا يبقى جهازان فعّالان ولا
+ * يبقى الحساب بلا جهاز.
+ */
+export function replaceDevice(token, deviceId, deviceName, password) {
+  return apiRequest("/api/account/devices/replace", {
+    method: "POST",
+    token,
+    body: { device_id: deviceId, device_name: deviceName, password },
   });
 }
 

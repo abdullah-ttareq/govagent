@@ -79,6 +79,14 @@ class RuntimeState:
     #: اسم الجهاز كما سجّله الـBackend، للعرض في الواجهة.
     device_name: str | None = None
     subscription_status: str | None = None
+    #: تاريخ انتهاء الاشتراك كما وصل من الـBackend — للعرض في التطبيق.
+    subscription_expires_at: str | None = None
+    #: بريد صاحب الحساب.
+    #:
+    #: ⚠️ **لا يظهر في :meth:`snapshot`** — وهي ما يخدمه `/health` بلا أي
+    #: مصادقة. يخرج من مسار الجلسة المحمي وحده. بريدُ العميل ليس معلومة
+    #: يقرؤها كل ما يستطيع الوصول إلى الاسترجاع المحلي.
+    account_email: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def set(
@@ -106,8 +114,33 @@ class RuntimeState:
             self.downloaded_bytes = received
             self.total_bytes = total
 
+    def set_account(
+        self,
+        *,
+        email: str | None = None,
+        device_name: str | None = None,
+        status: str | None = None,
+        expires_at: str | None = None,
+    ) -> None:
+        """يحدّث بيانات العرض الخاصة بالحساب تحت القفل نفسه."""
+        with self._lock:
+            if email is not None:
+                self.account_email = email
+            if device_name is not None:
+                self.device_name = device_name
+            if status is not None:
+                self.subscription_status = status
+            if expires_at is not None:
+                self.subscription_expires_at = expires_at
+
     def snapshot(self) -> dict[str, object]:
-        """لقطة متّسقة للعرض في `/health` وفي الواجهة."""
+        """لقطة متّسقة للعرض في `/health`.
+
+        ⚠️ **هذا المسار بلا مصادقة** — تستطلعه الإضافة قبل أن تملك رمز
+        الجلسة المحلي. فما يخرج هنا يجب أن يكون آمنًا أمام أي شيء يستطيع
+        مناداة الاسترجاع المحلي: مرحلةٌ ورسالتها وتقدّمٌ واسم جهاز وصفي.
+        **لا بريد ولا بيان اعتماد ولا منفذ محرّك ولا مسار ملف.**
+        """
         with self._lock:
             return {
                 "phase": self.phase.value,
@@ -120,3 +153,17 @@ class RuntimeState:
                 "is_ready": self.phase is Phase.READY,
                 "needs_activation": self.phase is Phase.AWAITING_ACTIVATION,
             }
+
+    def account_snapshot(self) -> dict[str, object]:
+        """لقطة للتطبيق المحلي المصادَق عليه برمز الجلسة.
+
+        تزيد على :meth:`snapshot` بريدَ صاحب الحساب وتاريخ انتهاء اشتراكه.
+
+        ⚠️ **ولا تزيد بيان اعتماد الجهاز ولا تجزئته ولا سرّ هويته.** لا
+        يوجد في هذا الصنف حقلٌ يحمل أيًّا منها أصلًا.
+        """
+        base = self.snapshot()
+        with self._lock:
+            base["account_email"] = self.account_email
+            base["subscription_expires_at"] = self.subscription_expires_at
+        return base

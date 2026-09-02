@@ -159,6 +159,12 @@ class DeviceIdentity:
 
     الملف تحت مجلد بيانات التركيب على الجهاز، **لا في المتصفح ولا في مجلد
     المستخدم المتنقّل**: الهوية للجهاز لا للمستخدم.
+
+    ⚠️ **هذا سرّ هويّة لا بيان اعتماد.** يولّده الـRuntime، فلا يصلح
+    للمصادقة أمام السيرفر — من يملك الجهاز يملك توليده. وظيفته أن يقوم
+    عليه قيد «جهاز فعّال واحد» في القاعدة وأن يجعل إعادة استبدال جلسة
+    التركيب عمليةً مُعادة التنفيذ. بيان الاعتماد يصدره السيرفر ويحفظه
+    :class:`DeviceCredentialStore`.
     """
 
     #: اسم الملف. الامتداد `bin` لا `txt`: محتواه ثنائي معمّى لا نصّ.
@@ -239,8 +245,8 @@ class DeviceIdentity:
         if self.exists():
             logger.warning(
                 "ملف هوية الجهاز موجود لكنه غير قابل للفكّ (نسخ من جهاز آخر "
-                "أو إعادة تثبيت ويندوز). سيُولَّد سرّ جديد، وقد يحتاج التفعيل "
-                "السابق إبطالًا من مسؤول النظام."
+                "أو إعادة تثبيت ويندوز). سيُولَّد سرّ جديد، وقد يحتاج صاحب "
+                "الحساب أن يستبدل الجهاز من إضافة GovMind."
             )
         return self.create()
 
@@ -250,6 +256,118 @@ class DeviceIdentity:
             self._path.unlink(missing_ok=True)
         except OSError:
             logger.warning("تعذّر حذف ملف سرّ الجهاز.")
+
+
+# ---------------------------------------------------------------------------
+# مخزن بيان اعتماد الجهاز
+# ---------------------------------------------------------------------------
+class DeviceCredentialStore:
+    """يحفظ بيان اعتماد الجهاز الذي أصدره السيرفر، **محميًّا بـDPAPI**.
+
+    **الفرق عن :class:`DeviceIdentity`.** هناك سرّ *هويّة* يولّده هذا
+    البرنامج، وهنا بيان *اعتماد* يولّده السيرفر ويعود مرة واحدة في رد
+    استبدال جلسة التركيب. لا سبيل إلى استرجاعه بعدها: القاعدة لا تحمل إلا
+    تجزئته. فقدُه يعني إعادة الربط من الإضافة، لا كارثة.
+
+    ⚠️ **لا يُكتب خامًا في أي مكان**: لا في `govmind.config.json`، ولا في
+    السجلّ، ولا في رسالة خطأ، ولا في أي رد يصل المتصفح. الملف الوحيد الذي
+    يحمله معمّى بـDPAPI بنطاق الجهاز، مثل ملف الهوية تمامًا.
+
+    ⚠️ **لا تقرؤه الواجهة المحلية إطلاقًا.** الـRuntime وحده يلصقه بطلباته
+    من جانب الخادم — انظر `control_plane.ControlPlaneClient`.
+    """
+
+    #: اسم الملف. الامتداد `bin` لا `txt`: محتواه ثنائي معمّى لا نصّ.
+    FILE_NAME = "credential.bin"
+
+    def __init__(
+        self, data_dir: Path, protector: SecretProtector | None = None
+    ) -> None:
+        self._path = Path(data_dir) / self.FILE_NAME
+        self._protector = protector or default_protector()
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def protection(self) -> str:
+        """اسم آلية الحماية المستعملة — للتشخيص وللاختبارات."""
+        return getattr(self._protector, "name", "unknown")
+
+    def exists(self) -> bool:
+        return self._path.is_file()
+
+    def load(self) -> str | None:
+        """يعيد بيان الاعتماد الخام، أو ``None`` إن غاب أو تعذّر فكّه.
+
+        **غير قابل للفكّ = غائب**: ملف نُسخ من جهاز آخر، أو ويندوز أُعيد
+        تثبيته فضاعت مفاتيح DPAPI. المطلوب حينها ربطٌ جديد من الإضافة.
+
+        ⚠️ **تعذّر القراءة ليس تعذّر الفكّ.** ملفٌ موجود بلا صلاحية قراءة
+        خللٌ عابر، وإهماله يجعل البرنامج يطلب ربطًا جديدًا بلا سبب.
+
+        Raises:
+            IdentityError: إذا وُجد الملف وتعذّرت **قراءته** من القرص.
+        """
+        if not self.exists():
+            return None
+
+        try:
+            blob = self._path.read_bytes()
+        except OSError as exc:
+            raise IdentityError(
+                "تعذّرت قراءة ملف ربط الجهاز. تأكد من صلاحيات مجلد تثبيت "
+                "GovMind ثم أعد تشغيل GovMind."
+            ) from exc
+
+        try:
+            return base64.b64decode(self._protector.unprotect(blob)).decode("ascii")
+        except Exception:
+            # ⚠️ بلا `exc_info`: أثر الاستثناء قد يحمل جزءًا من المحتوى.
+            logger.warning("تعذّر فكّ بيان اعتماد الجهاز؛ سيُطلب ربط جديد.")
+            return None
+
+    def store(self, credential: str) -> None:
+        """يحفظ بيان الاعتماد محميًّا، مستبدلًا أي ملف قائم.
+
+        الاستبدال هو السلوك الصحيح: السيرفر يبطل البيان السابق عند كل
+        إصدار، فالاحتفاظ بالقديم يترك ملفًّا لا يُقبل.
+
+        Raises:
+            ProtectionUnavailableError: إذا تعذّرت التعمية. **لا يُكتب
+                بديل نصّي صريح بحال** — ملفٌ مكشوف أسوأ من رسالة واضحة.
+            IdentityError: إذا تعذّرت الكتابة على القرص.
+        """
+        value = (credential or "").strip()
+        if not value:
+            raise IdentityError("لم يصل بيان اعتماد صالح من خدمة GovMind.")
+
+        blob = self._protector.protect(base64.b64encode(value.encode("ascii")))
+
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            # كتابة ذرّية: انقطاع أثناء الكتابة لا يترك ملفًا نصفه قديم
+            # ونصفه جديد — وكلاهما غير قابل للفكّ.
+            temporary = self._path.with_suffix(".tmp")
+            temporary.write_bytes(blob)
+            os.replace(temporary, self._path)
+        except OSError as exc:
+            raise IdentityError(
+                "تعذّر حفظ ربط الجهاز على القرص. تأكد من صلاحيات مجلد تثبيت "
+                "GovMind ثم أعد المحاولة."
+            ) from exc
+
+        _restrict_permissions(self._path)
+        # ⚠️ السطر يذكر الحدث لا القيمة.
+        logger.info("حُفظ بيان اعتماد الجهاز محميًّا.")
+
+    def clear(self) -> None:
+        """يحذف بيان الاعتماد — بعد رفضه من السيرفر أو عند إلغاء التثبيت."""
+        try:
+            self._path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("تعذّر حذف ملف بيان اعتماد الجهاز.")
 
 
 def _current_user_sid() -> str | None:

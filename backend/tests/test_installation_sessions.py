@@ -45,8 +45,15 @@ from tests.test_entitlements import (
 
 client = TestClient(app)
 
+#: هوية جهاز يولّدها الـRuntime. **ليست بيان اعتماد**: لا يصادق بها مسار.
 RUNTIME_SECRET = "runtime-device-secret-value-0001"
 OTHER_SECRET = "runtime-device-secret-value-0002"
+
+#: بيانات الاعتماد الصادرة في هذا الاختبار، بترتيب إصدارها.
+#:
+#: يُفرَّغ في التركيبة `fake`: بقاؤه بين الاختبارات يجعل اختبارًا يصادق
+#: ببيان أصدره اختبار سابق، فتصير النتيجة تابعة للترتيب.
+ISSUED_CREDENTIALS: list[str] = []
 
 
 class SessionAwareSupabase(FakeSupabase):
@@ -59,6 +66,7 @@ class SessionAwareSupabase(FakeSupabase):
     def __init__(self) -> None:
         super().__init__()
         self.tables["installation_sessions"] = []
+        self.tables["device_credentials"] = []
         self.rpc_calls: list[tuple[str, dict[str, Any]]] = []
 
     # -- دالة الاستهلاك ------------------------------------------------
@@ -152,6 +160,143 @@ class SessionAwareSupabase(FakeSupabase):
             ],
         )
 
+    # -- بيانات اعتماد الأجهزة -----------------------------------------
+    def _issue_credential(self, payload: dict[str, Any]) -> httpx.Response:
+        """يحاكي `issue_device_credential` بشروطها الثلاثة نفسها.
+
+        محاكاة **العقد** لا النجاح: تفعيل مبطَل يُرفض، واشتراك لا يسمح
+        يُرفض، والبيان السابق يُبطل قبل إدراج الجديد. مزيّفٌ ينجح دائمًا
+        يختبر المزيّف.
+        """
+        activation_id = int(payload["p_activation_id"])
+        credential_hash = payload["p_credential_hash"]
+        now = datetime.now(UTC)
+
+        activation = next(
+            (
+                item
+                for item in self.tables["device_activations"]
+                if item["id"] == activation_id
+            ),
+            None,
+        )
+        if activation is None:
+            return httpx.Response(
+                400, json={"code": "22023", "message": "activation_not_found"}
+            )
+        if activation.get("revoked_at") is not None:
+            return httpx.Response(
+                400, json={"code": "22023", "message": "activation_revoked"}
+            )
+
+        subscription = next(
+            item
+            for item in self.tables["subscriptions"]
+            if item["id"] == activation["subscription_id"]
+        )
+        if subscription["status"] not in ("trial", "active") or datetime.fromisoformat(
+            subscription["expires_at"]
+        ) <= now:
+            return httpx.Response(
+                400,
+                json={"code": "22023", "message": "subscription_not_serviceable"},
+            )
+
+        revoked_id = None
+        for item in self.tables["device_credentials"]:
+            if item["activation_id"] == activation_id and item["revoked_at"] is None:
+                item["revoked_at"] = now.isoformat()
+                revoked_id = item["id"]
+
+        self._next_id += 1
+        self.tables["device_credentials"].append(
+            {
+                "id": self._next_id,
+                "activation_id": activation_id,
+                "credential_hash": credential_hash,
+                "issued_at": now.isoformat(),
+                "last_used_at": now.isoformat(),
+                "revoked_at": None,
+            }
+        )
+        return httpx.Response(
+            200,
+            json=[
+                {"out_credential_id": self._next_id, "out_revoked_id": revoked_id}
+            ],
+        )
+
+    def _authenticate_credential(self, payload: dict[str, Any]) -> httpx.Response:
+        """يحاكي `authenticate_device_credential` — الفحوص الثلاثة معًا.
+
+        ⚠️ **إبطال التفعيل يبطل بيانه** كما يفعل المشغّل في القاعدة: تُقرأ
+        `revoked_at` من صفّ التفعيل نفسه، فلا يحتاج الاختبار أن يتذكّر
+        تحديث الجدولين معًا.
+        """
+        now = datetime.now(UTC)
+        credential = next(
+            (
+                item
+                for item in self.tables["device_credentials"]
+                if item["credential_hash"] == payload["p_credential_hash"]
+                and item["revoked_at"] is None
+            ),
+            None,
+        )
+        if credential is None:
+            return httpx.Response(200, json=[])
+
+        activation = next(
+            (
+                item
+                for item in self.tables["device_activations"]
+                if item["id"] == credential["activation_id"]
+                and item.get("revoked_at") is None
+            ),
+            None,
+        )
+        if activation is None:
+            return httpx.Response(200, json=[])
+
+        subscription = next(
+            (
+                item
+                for item in self.tables["subscriptions"]
+                if item["id"] == activation["subscription_id"]
+            ),
+            None,
+        )
+        if subscription is None:
+            return httpx.Response(200, json=[])
+
+        # الراية تستثني فحص الاشتراك وحده — لمسار الإخبار.
+        if payload.get("p_require_serviceable", True) and (
+            subscription["status"] not in ("trial", "active")
+            or datetime.fromisoformat(subscription["expires_at"]) <= now
+        ):
+            return httpx.Response(200, json=[])
+
+        credential["last_used_at"] = now.isoformat()
+        activation["last_seen_at"] = now.isoformat()
+
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "out_activation_id": activation["id"],
+                    "out_subscription_id": subscription["id"],
+                    "out_organization_id": subscription["organization_id"],
+                    "out_device_name": activation["device_name"],
+                    "out_activated_at": activation["activated_at"],
+                    "out_last_seen_at": activation["last_seen_at"],
+                    "out_status": subscription["status"],
+                    "out_starts_at": subscription["starts_at"],
+                    "out_expires_at": subscription["expires_at"],
+                    "out_seats": subscription.get("seats", 1),
+                }
+            ],
+        )
+
     def handler(self, request: httpx.Request) -> httpx.Response:
         if "/rpc/" in request.url.path:
             name = request.url.path.rsplit("/", 1)[-1]
@@ -159,7 +304,14 @@ class SessionAwareSupabase(FakeSupabase):
             self.rpc_calls.append((name, payload))
             if name == "redeem_installation_session":
                 return self._redeem(payload)
-            if name == "purge_expired_installation_sessions":
+            if name == "issue_device_credential":
+                return self._issue_credential(payload)
+            if name == "authenticate_device_credential":
+                return self._authenticate_credential(payload)
+            if name in (
+                "purge_expired_installation_sessions",
+                "purge_revoked_device_credentials",
+            ):
                 return httpx.Response(200, json=0)
             return httpx.Response(404, json={"message": "unknown function"})
         return super().handler(request)
@@ -174,6 +326,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(settings, "device_hash_pepper", PEPPER)
     monkeypatch.setattr(settings, "installation_token_ttl_minutes", 15)
 
+    ISSUED_CREDENTIALS.clear()
     backend = SessionAwareSupabase()
     supabase.set_client(
         httpx.Client(
@@ -183,6 +336,7 @@ def fake(monkeypatch):
     )
     yield backend
     supabase.set_client(None)
+    ISSUED_CREDENTIALS.clear()
 
 
 def issue_token(user: str = EMPLOYEE_A) -> str:
@@ -194,7 +348,8 @@ def issue_token(user: str = EMPLOYEE_A) -> str:
 
 
 def runtime_activate(token: str, secret: str = RUNTIME_SECRET):
-    return client.post(
+    """يستبدل رمز التركيب، ويحفظ بيان الاعتماد العائد للاختبارات التالية."""
+    response = client.post(
         "/api/runtime/activate",
         json={
             "token": token,
@@ -202,10 +357,15 @@ def runtime_activate(token: str, secret: str = RUNTIME_SECRET):
             "device_name": "حاسب ويندوز 11",
         },
     )
+    if response.status_code == 200:
+        ISSUED_CREDENTIALS.append(response.json()["device_credential"])
+    return response
 
 
-def device_headers(secret: str = RUNTIME_SECRET) -> dict[str, str]:
-    return {"X-GovMind-Device-Secret": secret}
+def device_headers(credential: str | None = None) -> dict[str, str]:
+    """ترويسة مصادقة الـRuntime — **ببيان الاعتماد لا بسرّ الهوية**."""
+    value = credential or (ISSUED_CREDENTIALS[-1] if ISSUED_CREDENTIALS else "")
+    return {"X-GovMind-Device-Credential": value}
 
 
 # ===========================================================================
@@ -387,9 +547,9 @@ def test_blocked_subscription_refuses_activation(fake):
 
 
 # ===========================================================================
-# مصادقة الـRuntime بسرّ جهازه
+# مصادقة الـRuntime ببيان اعتماده
 # ===========================================================================
-def test_entitlement_requires_a_device_secret(fake):
+def test_entitlement_requires_a_device_credential(fake):
     assert client.get("/api/runtime/entitlement").status_code == 401
 
 
@@ -404,12 +564,37 @@ def test_entitlement_reads_the_subscription(fake):
     assert body["device_name"] == "حاسب ويندوز 11"
 
 
-def test_unknown_device_secret_is_refused(fake):
+def test_unknown_device_credential_is_refused(fake):
     runtime_activate(issue_token())
     response = client.get(
-        "/api/runtime/entitlement", headers=device_headers(OTHER_SECRET)
+        "/api/runtime/entitlement",
+        headers=device_headers("a-credential-that-was-never-issued-0001"),
     )
-    assert response.status_code == 403
+    # ٤٠١ = «لم أقبل بيان اعتمادك»، لا ٤٠٣ = «اشتراكك لا يسمح».
+    assert response.status_code == 401
+
+
+def test_the_runtime_generated_secret_is_not_accepted_as_a_credential(fake):
+    """⚠️ **سرّ الجهاز لم يعد يصادق شيئًا.**
+
+    كان مقبولًا، وكان ذلك خطأً في نموذج الثقة: مصدر القيمة هو الطرف غير
+    الموثوق. الاختبار يرسله في ترويسة المصادقة ويتوقّع الرفض.
+    """
+    runtime_activate(issue_token())
+    response = client.get(
+        "/api/runtime/entitlement", headers=device_headers(RUNTIME_SECRET)
+    )
+    assert response.status_code == 401
+
+
+def test_the_legacy_device_secret_header_authenticates_nothing(fake):
+    """الترويسة القديمة لا تفتح شيئًا — ولو حملت القيمة الصحيحة."""
+    runtime_activate(issue_token())
+    response = client.get(
+        "/api/runtime/entitlement",
+        headers={"X-GovMind-Device-Secret": ISSUED_CREDENTIALS[-1]},
+    )
+    assert response.status_code == 401
 
 
 def test_revoked_device_loses_access(fake):
@@ -418,8 +603,10 @@ def test_revoked_device_loses_access(fake):
     fake.tables["device_activations"][0]["revoked_at"] = datetime.now(UTC).isoformat()
 
     response = client.get("/api/runtime/entitlement", headers=device_headers())
-    assert response.status_code == 403
-    assert "غير مفعَّل" in response.json()["detail"]
+    # **٤٠١ لا ٤٠٣**: الجهاز لم يعد مقبولًا، لا أن اشتراكه لا يسمح. الفرق
+    # يقرّر ما يفعله الـRuntime: يمحو ربطه ويطلب ربطًا جديدًا من الإضافة.
+    assert response.status_code == 401
+    assert "غير مرتبط" in response.json()["detail"]
 
 
 def test_expired_subscription_is_reported_not_hidden(fake):
@@ -435,12 +622,14 @@ def test_expired_subscription_is_reported_not_hidden(fake):
 def test_device_hash_never_appears_in_a_runtime_response(fake):
     runtime_activate(issue_token())
     stored = fake.tables["device_activations"][0]["device_id_hash"]
+    stored_credential = fake.tables["device_credentials"][0]["credential_hash"]
 
     for response in (
         client.get("/api/runtime/entitlement", headers=device_headers()),
         runtime_activate(issue_token(), RUNTIME_SECRET),
     ):
         assert stored not in response.text
+        assert stored_credential not in response.text
         assert RUNTIME_SECRET not in response.text
 
 
@@ -480,9 +669,10 @@ def test_model_url_needs_an_activated_device(fake, azure_model):
     assert client.get("/api/runtime/model").status_code == 401
     assert (
         client.get(
-            "/api/runtime/model", headers=device_headers("never-activated-secret-1")
+            "/api/runtime/model",
+            headers=device_headers("never-issued-credential-value-0001"),
         ).status_code
-        == 403
+        == 401
     )
 
 

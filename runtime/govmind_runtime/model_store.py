@@ -288,8 +288,8 @@ class ModelStore:
         if not expected:
             self.discard_partial()
             raise ModelVerificationError(
-                "لم يصل من الخادم تجزئة المودل، فلا يمكن التحقق منه. راجع "
-                "مسؤول النظام."
+                "لم يصل من الخادم تجزئة المودل، فلا يمكن التحقق منه. أعد "
+                "المحاولة، وإن تكرر فتواصل مع الدعم."
             )
 
         actual = sha256_of(self._part_path, on_progress=on_progress)

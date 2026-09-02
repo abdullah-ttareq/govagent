@@ -24,13 +24,54 @@ export const STEPS = Object.freeze({
   WELCOME: "welcome",
   /** نموذج البريد وكلمة المرور. */
   SIGNIN: "signin",
-  /** الحساب صحيح لكن لا جهة له — يحتاج مسؤول النظام. */
+  /** إنشاء حساب جديد. */
+  REGISTER: "register",
+  /** سُجّل الحساب والمشروع يشترط تأكيد البريد قبل الدخول. */
+  CONFIRM_EMAIL: "confirm-email",
+  /** فحص أوّلي قصير عند الإقلاع — محايد، لا يَعِد بشيء. */
+  CHECKING: "checking",
+
+  /** اختيار طريقة البدء — نسخة عرض أكاديمية بلا رسوم. */
+  CHOOSE_PLAN: "choose-plan",
+
+  /** نُزّل المثبّت وينتظر أن يضغط المستخدم «فتح ملف التثبيت». */
+  INSTALLER_READY: "installer-ready",
+
+  /**
+   * تعذّر على المتصفح فتح الملف — **حالة قائمة بذاتها لا خطأ عابر**.
+   *
+   * صلاحية `downloads.open` غير ممنوحة، أو نسخة متصفح لا تدعمها. الملف
+   * يُظهَر في مجلده وتُطلب من المستخدم خطوة واحدة، **ولا يبدأ استطلاع
+   * الـRuntime**: لم يُفتح شيء ليُنتظر.
+   */
+  OPEN_FAILED: "open-failed",
+
+  /** لم يظهر الـRuntime بعد المهلة — شاشة تشخيص لا انتظار بلا نهاية. */
+  INSTALL_HELP: "install-help",
+
+  /**
+   * تعذّر تسليم جلسة التركيب إلى الـRuntime.
+   *
+   * ⚠️ **غير «تعذّر تفعيل الجهاز»**: هنا لم يصل الرمز أصلًا — الـRuntime
+   * لا يستجيب، أو تعذّر إصدار جلسة تركيب. خلطُ الاثنين يعطي المستخدم
+   * إجراءً خاطئًا.
+   */
+  HANDOVER_FAILED: "handover-failed",
+
+  /** وصل الرمز ورفض الخادم التفعيل — رسالة السبب من الخادم. */
+  ACTIVATION_FAILED: "activation-failed",
+
+  /** الدخول صحيح لكن تجهيز الحساب لم يكتمل. */
   NOT_PROVISIONED: "not-provisioned",
   /** اشتراك منتهٍ أو موقوف أو ملغى — رسالة السبب من السيرفر. */
   SUBSCRIPTION_BLOCKED: "subscription-blocked",
   /** الحساب مفعّل على جهاز آخر. */
   DEVICE_TAKEN: "device-taken",
-  /** تفعيل هذا الجهاز. */
+  /**
+   * ⚠️ **لم تعد شاشةً في المسار.** بقيت التسمية لأن `STEP_TITLES` عامّة،
+   * لكن `resolveStep` لا يعيدها أبدًا: **الإضافة لا تفعّل جهازًا**، فهوية
+   * الجهاز يولّدها الـRuntime بعد التثبيت ويستهلك بها رمز التركيب.
+   */
   ACTIVATE: "activate",
   /** زر «ثبّت GovMind». */
   INSTALL: "install",
@@ -69,11 +110,17 @@ export const RUNTIME_BUSY_PHASES = Object.freeze([
  * @typedef {object} FlowState
  * @property {boolean} hasSession هل يوجد رمز دخول محفوظ وصالح المدة؟
  * @property {boolean} welcomeSeen هل تجاوز المستخدم شاشة الترحيب من قبل؟
- * @property {object|null} account ملف العمل، أو `null` إن لم يُربط الحساب بجهة.
+ * @property {object|null} account ملف العمل، أو `null` إن لم يكتمل التجهيز.
  * @property {object|null} subscription رد `/api/account/subscription`.
  * @property {"idle"|"running"|"done"} download حالة تنزيل المثبّت.
+ * @property {boolean} wantsRegister هل طلب المستخدم شاشة إنشاء الحساب؟
+ * @property {boolean} awaitingEmailConfirmation هل سُجّل حساب ينتظر تأكيد بريده؟
  * @property {object|null} runtime آخر حالة قرأتها الإضافة من `/health`.
  * @property {boolean} handingOver هل يجري تسليم رمز التركيب الآن؟
+ * @property {boolean} installStarted هل **قَبِل المتصفح فتح ملف المثبّت**؟
+ * @property {boolean} openFailed هل رفض المتصفح فتح الملف؟
+ * @property {string|null} handoverFailure سبب تعذّر تسليم رمز التركيب.
+ * @property {string|null} activationFailure سبب رفض الخادم للتفعيل.
  */
 
 /**
@@ -94,46 +141,131 @@ export function resolveStep(state = {}) {
     download = "idle",
     runtime = null,
     handingOver = false,
+    wantsRegister = false,
+    awaitingEmailConfirmation = false,
+    planAcknowledged = false,
+    installStarted = false,
+    openFailed = false,
+    handoverFailure = null,
+    activationFailure = null,
+    runtimeTimedOut = false,
+    booting = false,
   } = state;
 
-  // ١) بلا جلسة: ترحيب ثم دخول. الترحيب مرة واحدة — من رآه وسجّل خروجه
-  //    يعود إلى الدخول مباشرة، فتكراره عليه في كل مرة إبطاء بلا فائدة.
-  if (!hasSession) return welcomeSeen ? STEPS.SIGNIN : STEPS.WELCOME;
+  // ٠) فحص الإقلاع القصير: شاشة محايدة تقول ما يحدث فعلًا ولا تَعِد بغيره.
+  //    سقفها ثانية واحدة (`RUNTIME_DISCOVERY_TIMEOUT_MS`)، فلا تدوم.
+  if (booting) return STEPS.CHECKING;
 
-  // ٢) حساب موثوق بلا جهة: لا شيء يستطيع فعله بنفسه.
+  // ١) بلا جلسة: ترحيب، ثم دخول أو إنشاء حساب.
+  //
+  //    **رسالة تأكيد البريد تسبق كل شيء** حين تكون قائمة: الحساب أُنشئ
+  //    فعلًا، وإعادة المستخدم إلى نموذج الدخول تجعله يظنّ أن التسجيل فشل.
+  if (!hasSession) {
+    if (awaitingEmailConfirmation) return STEPS.CONFIRM_EMAIL;
+    if (wantsRegister) return STEPS.REGISTER;
+    // الترحيب مرة واحدة — من رآه وسجّل خروجه يعود إلى الدخول مباشرة.
+    return welcomeSeen ? STEPS.SIGNIN : STEPS.WELCOME;
+  }
+
+  // ٢) دخول موثوق لكن تجهيز الحساب ناقص: لا شيء يستطيع فعله بنفسه.
   if (!account) return STEPS.NOT_PROVISIONED;
 
   // ٣) لم تصل حالة الاشتراك بعد (أو فشل جلبها): لا يُفترض شيء.
-  if (!subscription) return STEPS.ACTIVATE;
+  if (!subscription) return STEPS.INSTALL;
 
-  // ٤) اشتراك لا يسمح بالخدمة — قبل أي شاشة تفعيل أو تنزيل.
+  // ٤) اشتراك لا يسمح بالخدمة — قبل أي شاشة تثبيت أو تنزيل.
   if (!subscription.is_usable) return STEPS.SUBSCRIPTION_BLOCKED;
 
-  // ٥) مفعّل على جهاز آخر: التفعيل هنا مستحيل حتى يبطله المسؤول.
-  if (isDeviceTaken(subscription)) return STEPS.DEVICE_TAKEN;
-
-  // ٦) لا جهاز مفعّلًا بعد، أو المفعّل ليس هذا الجهاز.
-  if (subscription.requires_activation) return STEPS.ACTIVATE;
-
-  // ٧) الـRuntime موجود على الجهاز: حالته تسبق كل ما يخصّ المثبّت.
-  //    من ثبّت البرنامج فعلًا لا يُعرض له «نزّل المثبّت» من جديد.
-  if (runtime) {
-    if (runtime.is_ready) return STEPS.INSTALLED;
-    if (handingOver || runtime.phase === "activating") {
-      return STEPS.ACTIVATING_DEVICE;
-    }
-    if (runtime.needs_activation) return STEPS.AWAITING_RUNTIME;
-    // ينزّل المودل أو يتحقق منه أو يجهّزه — كلها «جارٍ التجهيز».
-    return STEPS.PREPARING_MODEL;
+  // ٥) مفعّل على جهاز آخر: لا تثبيت هنا حتى يستبدله صاحب الحساب.
+  //
+  // ⚠️ **إلا أن يكون الجهاز المفعَّل هو هذا الحاسب.** بصمة المتصفح التي
+  // تقارن بها `verify` ليست هوية الجهاز التي سجّلها الـRuntime، فالمقارنة
+  // تعطي «جهاز آخر» على الحاسب نفسه بعد تثبيت ناجح. وجودُ Runtime **مربوط**
+  // على الاسترجاع المحلي إثباتٌ أقوى من أي بصمة متصفح: لا يعمل إلا على
+  // هذا الحاسب، ولا يُعدّ مربوطًا إلا ببيان اعتماد أصدره الخادم.
+  if (isDeviceTaken(subscription) && !isThisDeviceLinked(runtime)) {
+    return STEPS.DEVICE_TAKEN;
   }
 
-  // ٨) نُزّل المثبّت وننتظر أن يفتحه المستخدم فيظهر الـRuntime.
-  if (download === "done") return STEPS.AWAITING_RUNTIME;
+  // ٦) **فشلٌ وقع فعلًا يسبق كل شاشة تقدّم.**
+  //
+  // ⚠️ بلا شرط `installStarted`: تسليم الرمز قد يقع عند الدخول نفسه —
+  // Runtime مثبَّت من قبل ينتظر ربطًا — فلا تنزيل ولا فتحَ ملف في هذه
+  // الجلسة. اشتراطُ `installStarted` هنا كان يترك المستخدم أمام شاشة
+  // تقدّم فوق فشلٍ نهائي، وهو «الانتظار بلا نهاية» بعينه.
+  //
+  // والحالتان منفصلتان لأن إجراء المستخدم يختلف: تعذّرُ التسليم يُحلّ
+  // بإكمال التثبيت أو إعادته، ورفضُ التفعيل يُحلّ باستبدال الجهاز أو
+  // بتجديد الاشتراك.
+  if (handoverFailure) return STEPS.HANDOVER_FAILED;
+  if (activationFailure) return STEPS.ACTIVATION_FAILED;
 
-  // ٩) لا Runtime ولا تنزيل مكتمل: التنزيل وحالاته.
+  // ٧) الـRuntime موجود على الجهاز: حالته تسبق كل ما يخصّ المثبّت.
+  //    من ثبّت البرنامج فعلًا لا يُعرض له «نزّل المثبّت» ولا شاشة خطة.
+  if (runtime) {
+    // جاهز = مثبَّت ومفعَّل. لا شرط عليه: هذه أفضل حالة ممكنة.
+    if (runtime.is_ready) return STEPS.INSTALLED;
+
+    // ⚠️ **شاشات التقدّم مشروطة بأن يكون المستخدم قد بدأ التثبيت.**
+    //
+    // كان يكفي أن يجد الإقلاعُ Runtime عالقًا في `phase: "activating"` —
+    // بقيّةَ تثبيتٍ سابق متعثّر — ليرى المستخدم «جارٍ تفعيل هذا الجهاز»
+    // فور فتح النافذة، بلا جلسة تركيب ولا تنزيل ولا فعلٍ منه. شاشةُ تقدّمٍ
+    // عن عملية لم يبدأها أحد.
+    //
+    // `installStarted` لا يصير صحيحًا إلا بعد اكتمال التنزيل **وقبولِ
+    // المتصفح فتحَ الملف** — انظر `doOpenInstaller`.
+    if (installStarted) {
+      if (handingOver || runtime.phase === "activating") {
+        return STEPS.ACTIVATING_DEVICE;
+      }
+      // الـRuntime يعمل ولم يُربط بعد: ما زلنا في مرحلة إكمال التثبيت،
+      // **لا في مرحلة تفعيل الجهاز**.
+      if (runtime.needs_activation) return STEPS.AWAITING_RUNTIME;
+      // ينزّل المودل أو يتحقق منه أو يجهّزه — كلها «جارٍ التجهيز».
+      return STEPS.PREPARING_MODEL;
+    }
+
+    // Runtime موجود لكن غير جاهز ولم يبدأ المستخدم تثبيتًا في هذه الجلسة:
+    // يُكمل المسار الطبيعي أدناه بدل أن يُحبس أمام تقدّمٍ ليس تقدّمه.
+  }
+
+  // ٨) اختيار طريقة البدء، **مرة واحدة لكل حساب** قبل التثبيت.
+  if (!planAcknowledged) return STEPS.CHOOSE_PLAN;
+
+  // ٩) التنزيل جارٍ.
   if (download === "running") return STEPS.DOWNLOADING;
+
+  // ١٠) اكتمل التنزيل.
+  //
+  // ⚠️ **الاستطلاع لا يبدأ إلا بعد أن يقبل المتصفح فتح الملف فعلًا.**
+  // كان يكفي أن يضغط المستخدم زرَّ إقرارٍ بأنه فتح المثبّت — إقرارٌ منه لا
+  // حدثٌ وقع — فتنتظر الإضافة برنامجًا لم يُفتح ملفُه أصلًا. الآن
+  // `installStarted` لا تصير صحيحة إلا حين تعود `chrome.downloads.open`
+  // بالقبول؛ انظر `doOpenInstaller`.
+  if (download === "done") {
+    if (!installStarted) {
+      // رفض المتصفح الفتح: شاشة تقول الخطوة الواحدة الباقية، **بلا
+      // استطلاع** — لا شيء فُتح لينتظره أحد.
+      return openFailed ? STEPS.OPEN_FAILED : STEPS.INSTALLER_READY;
+    }
+    // قَبِل المتصفح الفتح: ننتظر ظهور الـRuntime — بمهلة منتهية.
+    return runtimeTimedOut ? STEPS.INSTALL_HELP : STEPS.AWAITING_RUNTIME;
+  }
+
+  // ١١) لا شيء بعد: ابدأ بتثبيت GovMind.
+  //
+  // ⚠️ **هنا كان العطل.** كان الشرط `subscription.requires_activation`
+  // يعيد `STEPS.ACTIVATE`، فيرى صاحبُ أول جهاز شاشةَ «تفعيل هذا الجهاز»
+  // بدل «تثبيت GovMind»، وزرُّها يفعّل **بصمة المتصفح** العشوائية فيشغل
+  // خانةَ الجهاز الوحيدة بهوية لا يملكها الـRuntime. فإذا ثُبّت البرنامج
+  // ورام تفعيل نفسه رُدّ بـ23505 وبقي الحساب عالقًا بلا برنامج يعمل.
+  //
+  // **الإضافة لا تفعّل جهازًا إطلاقًا.** الهوية يولّدها الـRuntime على
+  // الحاسب (DPAPI)، ويستهلك بها رمز التركيب بعد التثبيت.
   return STEPS.INSTALL;
 }
+
 
 /**
  * هل الاشتراك مفعّل على **جهاز آخر**؟
@@ -146,18 +278,40 @@ export function isDeviceTaken(subscription) {
   return Boolean(device) && device.is_current_device === false;
 }
 
+/**
+ * هل يوجد على هذا الحاسب Runtime **مربوط بالحساب**؟
+ *
+ * `needs_activation === false` تعني أن الـRuntime يحمل بيان اعتماد أصدره
+ * الخادم بعد استبدال جلسة تركيب صالحة. لا يمكن أن يوجد ذلك على حاسب لم
+ * يُربط، ولا يمكن أن يبقى بعد استبدال الجهاز — الخادم يبطله.
+ */
+export function isThisDeviceLinked(runtime) {
+  return Boolean(runtime) && runtime.needs_activation === false;
+}
+
 /** نصّ العنوان الظاهر لكل شاشة — يستعمله العنوان الرئيسي وقارئ الشاشة. */
 export const STEP_TITLES = Object.freeze({
   [STEPS.WELCOME]: "مرحبًا بك في GovMind",
   [STEPS.SIGNIN]: "تسجيل الدخول",
-  [STEPS.NOT_PROVISIONED]: "الحساب غير مرتبط بجهة",
+  [STEPS.REGISTER]: "إنشاء حساب جديد",
+  [STEPS.CONFIRM_EMAIL]: "أكّد بريدك الإلكتروني",
+  [STEPS.NOT_PROVISIONED]: "الحساب غير مكتمل التجهيز",
   [STEPS.SUBSCRIPTION_BLOCKED]: "الاشتراك لا يسمح بالاستخدام",
   [STEPS.DEVICE_TAKEN]: "الحساب مفعّل على جهاز آخر",
+  [STEPS.CHECKING]: "جاري التحقق...",
+  [STEPS.CHOOSE_PLAN]: "اختر طريقة البدء",
   [STEPS.ACTIVATE]: "تفعيل هذا الجهاز",
   [STEPS.INSTALL]: "تثبيت GovMind",
   [STEPS.DOWNLOADING]: "جارٍ التنزيل",
-  [STEPS.AWAITING_RUNTIME]: "بانتظار فتح المثبّت",
+  [STEPS.INSTALLER_READY]: "تم تنزيل GovMind",
+  [STEPS.OPEN_FAILED]: "افتح ملف التثبيت من المجلد",
+  [STEPS.INSTALL_HELP]: "لم يبدأ GovMind بعد",
+  // ⚠️ **ليست «جارٍ تفعيل هذا الجهاز».** لا تفعيل يجري بعد: المثبّت
+  // يعمل، والـRuntime لم يظهر. تسميةُ ما لا يحدث هي ما أربك العميل.
+  [STEPS.AWAITING_RUNTIME]: "بانتظار اكتمال تثبيت GovMind",
   [STEPS.ACTIVATING_DEVICE]: "جارٍ تفعيل الجهاز",
+  [STEPS.HANDOVER_FAILED]: "تعذّر إكمال ربط الجهاز",
+  [STEPS.ACTIVATION_FAILED]: "تعذّر تفعيل هذا الجهاز",
   [STEPS.PREPARING_MODEL]: "جارٍ تجهيز GovMind",
   [STEPS.INSTALLED]: "GovMind جاهز",
 });
@@ -171,9 +325,12 @@ export const STEP_TITLES = Object.freeze({
 export const STEP_NUMBERS = Object.freeze({
   [STEPS.WELCOME]: 1,
   [STEPS.SIGNIN]: 2,
-  [STEPS.ACTIVATE]: 3,
+  [STEPS.REGISTER]: 2,
+  [STEPS.CHOOSE_PLAN]: 3,
   [STEPS.INSTALL]: 4,
   [STEPS.DOWNLOADING]: 4,
+  [STEPS.INSTALLER_READY]: 5,
+  [STEPS.OPEN_FAILED]: 5,
   [STEPS.AWAITING_RUNTIME]: 5,
   [STEPS.ACTIVATING_DEVICE]: 6,
   [STEPS.PREPARING_MODEL]: 6,

@@ -172,13 +172,13 @@ def _translate(exc: SupabaseError) -> EntitlementError:
         )
     if "subscription_not_serviceable" in detail or "22023" in detail:
         return SubscriptionInactiveError(
-            "اشتراكك لا يسمح بتفعيل جهاز حاليًا. راجع مسؤول النظام في جهتك."
+            "اشتراكك لا يسمح بتفعيل جهاز حاليًا."
         )
     if "23505" in detail or "مستخدمة مسبقًا" in detail:
         return DeviceLimitReachedError(
-            "هذا الاشتراك مفعّل على جهاز آخر. كل اشتراك يعمل على جهاز واحد "
-            "فقط؛ راجع مسؤول النظام في جهتك لإلغاء تفعيل الجهاز السابق."
+            "حسابك مفعّل حاليًا على جهاز آخر. اشتراكك يعمل على جهاز واحد "
+            "فقط، ويمكنك استبدال الجهاز السابق من نافذة GovMind."
         )
     return InstallationSessionError(
-        "تعذّر إتمام التفعيل. أعد المحاولة، وإن تكرر فراجع مسؤول النظام."
+        "تعذّر إتمام التفعيل. أعد المحاولة، وإن تكرر فتواصل مع الدعم."
     )

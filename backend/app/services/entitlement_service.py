@@ -126,22 +126,21 @@ class Subscription:
 
         if self.status == "suspended":
             return (
-                "اشتراكك موقوف حاليًا. راجع مسؤول النظام في جهتك لإعادة تفعيله."
+                "اشتراكك موقوف حاليًا. تواصل مع الدعم لإعادة تفعيله."
             )
         if self.status == "cancelled":
-            return "اشتراكك ملغى. راجع مسؤول النظام في جهتك لتجديد الاشتراك."
+            return "اشتراكك ملغى. جدّد اشتراكك للمتابعة."
         if self.status == "expired" or self.expires_at <= moment:
             return (
-                f"انتهى اشتراكك بتاريخ {expiry_text}. راجع مسؤول النظام في "
-                "جهتك لتجديد الاشتراك قبل متابعة الاستخدام."
+                f"انتهى اشتراكك بتاريخ {expiry_text}. جدّد اشتراكك "
+                "لمتابعة الاستخدام."
             )
         if self.status not in SERVICE_STATUSES:
-            return "اشتراكك لا يسمح باستخدام الخدمة حاليًا. راجع مسؤول النظام."
+            return "اشتراكك لا يسمح باستخدام الخدمة حاليًا. تواصل مع الدعم."
         if self.starts_at > moment:
             starts_text = self.starts_at.strftime("%Y-%m-%d")
             return (
-                f"اشتراكك لم يبدأ بعد؛ يبدأ بتاريخ {starts_text}. راجع مسؤول "
-                "النظام في جهتك."
+                f"اشتراكك لم يبدأ بعد؛ يبدأ بتاريخ {starts_text}."
             )
         return None
 
@@ -252,14 +251,14 @@ def load_account(identity: SupabaseIdentity) -> Account:
     )
     if row is None:
         raise AccountNotProvisionedError(
-            "حسابك غير مرتبط بأي جهة في النظام بعد. راجع مسؤول النظام "
-            "لإكمال تسجيلك."
+            "حسابك غير مكتمل التجهيز. أعد تسجيل الدخول، وإن تكرر الأمر "
+            "فتواصل مع الدعم."
         )
 
     account = _to_account(row)
     if not account.is_active:
         raise AccountNotProvisionedError(
-            "حسابك معطّل حاليًا. راجع مسؤول النظام في جهتك."
+            "حسابك معطّل حاليًا. تواصل مع الدعم."
         )
     return account
 
@@ -277,8 +276,8 @@ def load_subscription(organization_id: int) -> Subscription:
     )
     if row is None:
         raise SubscriptionMissingError(
-            "لا يوجد اشتراك مسجّل لجهتك في النظام، فلا يمكن استخدام الخدمة. "
-            "راجع مسؤول النظام لتفعيل الاشتراك."
+            "لا يوجد اشتراك مرتبط بحسابك، فلا يمكن استخدام الخدمة. "
+            "تواصل مع الدعم."
         )
     return _to_subscription(row)
 
@@ -314,43 +313,41 @@ def active_device(subscription_id: int) -> DeviceActivation | None:
     return _to_device(row) if row else None
 
 
-def find_activation_by_hash(
-    device_hash: str,
-) -> tuple[DeviceActivation, Subscription] | None:
-    """يجد التفعيل **الفعّال** المطابق لتجزئة سرّ الجهاز، مع اشتراكه.
+# ⚠️ **حُذفت `find_activation_by_hash` ولا يجوز أن تعود.**
+#
+# كانت مصادقة الـRuntime: تطابق تجزئةَ سرٍّ **ولّده الـRuntime نفسه** بتفعيل
+# قائم. أي برنامج على جهاز العميل يستطيع توليد سرّ، والسيرفر كان يقبل أوّل
+# من يصل ما دام يطابق تجزئة مخزّنة — فالقيمة معرّفُ جهاز لا بيانَ اعتماد.
+#
+# البديل `device_credential_service.authenticate`: بيان يصدره **السيرفر**
+# عند استبدال جلسة تركيب صالحة، ويُفحص مع الجهاز والاشتراك في جملة SQL
+# واحدة. و`device_id_hash` يبقى هويّةً يقوم عليها قيد «جهاز فعّال واحد»
+# واستبدالُ الجهاز — **ولا يصادق شيئًا**.
 
-    هذه هي مصادقة الـRuntime: لا رمز مستخدم لديه، وإنما سرّ جهازه. السرّ
-    الخام لا يصل هنا — المستدعي يجزّئه بالمِلح أولًا.
 
-    يعيد ``None`` لتفعيل مبطَل أو غير موجود؛ **لا يُفرَّق بينهما**، فكلاهما
-    يعني للـRuntime «أعد التفعيل».
+def load_owner_email(organization_id: int) -> str:
+    """بريد صاحب الاشتراك، أو نصّ فارغ إن تعذّرت قراءته.
+
+    **لِمَ يحتاجه الـRuntime؟** ليعرض التطبيق المثبَّت اسم الحساب الذي رُبط
+    به الجهاز، فلا يظنّ العميل أنه دخل بحساب آخر. البريد بريده هو، ولا
+    يخرج إلى غير الجهاز المرتبط بحسابه.
+
+    ⚠️ **لا يُرفع خطأ عند الغياب**: هذه معلومة عرض لا شرط استحقاق، وحجب
+    التطبيق لأن سطر ملف عمل ناقص عقوبة بلا سبب.
     """
-    row = supabase.select_one(
-        "device_activations",
-        columns=(
-            "id,subscription_id,device_id_hash,device_name,"
-            "activated_at,last_seen_at,revoked_at"
-        ),
-        filters={
-            "device_id_hash": f"eq.{device_hash}",
-            "revoked_at": "is.null",
-        },
-    )
-    if row is None:
-        return None
-
-    device = _to_device(row)
-    sub_row = supabase.select_one(
-        "subscriptions",
-        columns="id,organization_id,status,seats,starts_at,expires_at",
-        filters={"id": f"eq.{device.subscription_id}"},
-    )
-    if sub_row is None:
-        # تفعيل يشير إلى اشتراك محذوف: حالة لا يُفترض وقوعها، وتُعامَل
-        # كغياب تفعيل لا كخطأ داخلي.
-        return None
-
-    return _touch_last_seen(device), _to_subscription(sub_row)
+    try:
+        rows = supabase.select(
+            "profiles",
+            columns="email",
+            filters={"organization_id": f"eq.{organization_id}"},
+            # ترتيب ثابت: مساحة العمل في هذا المنتج لحساب واحد، والترتيب
+            # يجعل النتيجة محسومة لو بقي صفّ قديم من بيانات سابقة.
+            order="created_at.asc",
+            limit=1,
+        )
+    except SupabaseError:
+        return ""
+    return str((rows[0] if rows else {}).get("email") or "")
 
 
 def list_devices(subscription_id: int) -> list[DeviceActivation]:
@@ -409,9 +406,9 @@ def activate_device(
         if existing.device_id_hash == device_hash:
             return _touch_last_seen(existing)
         raise DeviceLimitReachedError(
-            f"حسابك مفعّل بالفعل على جهاز آخر ({existing.device_name}). "
-            "كل اشتراك يعمل على جهاز واحد فقط. راجع مسؤول النظام في جهتك "
-            "لإلغاء تفعيل الجهاز السابق قبل تفعيل هذا الجهاز."
+            f"حسابك مفعّل حاليًا على جهاز آخر ({existing.device_name}). "
+            "اشتراكك يعمل على جهاز واحد فقط، ويمكنك استبدال الجهاز السابق "
+            "بهذا الجهاز من نافذة GovMind."
         )
 
     name = (device_name or "").strip() or "جهاز غير مسمّى"
@@ -429,9 +426,8 @@ def activate_device(
             # سبق جهازٌ آخر هذا الطلب بين الفحص والإدراج. القاعدة رفضت،
             # وهي المرجع لا الفحص أعلاه.
             raise DeviceLimitReachedError(
-                "حسابك مفعّل بالفعل على جهاز آخر. كل اشتراك يعمل على جهاز "
-                "واحد فقط. راجع مسؤول النظام في جهتك لإلغاء تفعيل الجهاز "
-                "السابق."
+                "حسابك مفعّل حاليًا على جهاز آخر. اشتراكك يعمل على جهاز "
+                "واحد فقط، ويمكنك استبدال الجهاز السابق من نافذة GovMind."
             ) from exc
         raise
     return _to_device(row)
@@ -455,7 +451,7 @@ def _verify_against(
     if current.device_id_hash != device_hash:
         raise DeviceMismatchError(
             f"حسابك مفعّل على جهاز آخر ({current.device_name})، وليس على هذا "
-            "الجهاز. راجع مسؤول النظام في جهتك لإلغاء تفعيل الجهاز السابق."
+            "الجهاز. يمكنك استبدال الجهاز السابق بهذا الجهاز من نافذة GovMind."
         )
     return _touch_last_seen(current)
 
@@ -472,6 +468,71 @@ def verify_device(account: Account, *, raw_device_id: str) -> DeviceActivation:
     return _verify_against(subscription, raw_device_id)
 
 
+def replace_device(
+    account: Account, *, raw_device_id: str, device_name: str
+) -> tuple[DeviceActivation, bool]:
+    """يبطل الجهاز الفعّال ويفعّل الجهاز الحالي **في عملية ذرّية واحدة**.
+
+    **يفعلها صاحب الحساب بنفسه** — لا مسؤول يوافق. التحقق من كلمة المرور
+    يتم في طبقة الـAPI قبل النداء؛ هذه الدالة تفترض أن الهوية أُثبتت.
+
+    الذرّية من دالة ``replace_device_activation`` في القاعدة: «أبطل ثم
+    فعّل» عبر طلبين يتركان نافذة يخرج منها العميل بلا جهاز فعّال، أو
+    يخرج منها جهازان.
+
+    Returns:
+        (التفعيل الجديد، هل استُبدل جهاز سابق فعلًا؟)
+
+    Raises:
+        SubscriptionMissingError | SubscriptionInactiveError: اشتراك لا يسمح.
+        DeviceLimitReachedError: سباق نادر أفلت من القفل وردّه القيد.
+        DeviceIdError: بصمة غير صالحة أو مِلح غير مضبوط.
+    """
+    subscription = ensure_serviceable(load_subscription(account.organization_id))
+    device_hash = hash_device_id(raw_device_id)
+
+    try:
+        rows = supabase.rpc(
+            "replace_device_activation",
+            {
+                "p_subscription_id": subscription.id,
+                "p_device_hash": device_hash,
+                "p_device_name": (device_name or "").strip()[:120] or "جهاز غير مسمّى",
+            },
+        )
+    except SupabaseError as exc:
+        detail = str(exc)
+        if "23505" in detail:
+            # طلبان متزامنان: القيد ردّ الثاني. الحالة سليمة — جهاز واحد.
+            raise DeviceLimitReachedError(
+                "جرت محاولة استبدال أخرى في اللحظة نفسها. أعد المحاولة."
+            ) from exc
+        if "subscription_not_serviceable" in detail:
+            raise SubscriptionInactiveError(
+                "اشتراكك لا يسمح بتفعيل جهاز حاليًا."
+            ) from exc
+        raise
+
+    if not rows:
+        raise EntitlementError(
+            "تعذّر استبدال الجهاز. أعد المحاولة، وإن تكرر فتواصل مع الدعم."
+        )
+
+    row = rows[0]
+    activation = supabase.select_one(
+        "device_activations",
+        columns=(
+            "id,subscription_id,device_id_hash,device_name,"
+            "activated_at,last_seen_at,revoked_at"
+        ),
+        filters={"id": f"eq.{int(row['out_activation_id'])}"},
+    )
+    if activation is None:
+        raise EntitlementError("تعذّر قراءة حالة الجهاز بعد الاستبدال.")
+
+    return _to_device(activation), bool(row.get("out_replaced"))
+
+
 def revoke_device(admin: Account, *, activation_id: int) -> DeviceActivation:
     """يبطل تفعيل جهاز. **لمسؤول الجهة، وداخل جهته وحدها.**
 
@@ -484,7 +545,7 @@ def revoke_device(admin: Account, *, activation_id: int) -> DeviceActivation:
             يُفرَّق بين الحالتين، فكلاهما لا يعني شيئًا لصاحب الطلب.
     """
     if not admin.is_admin:
-        raise AdminRequiredError("إلغاء تفعيل الأجهزة متاح لمسؤول الجهة فقط.")
+        raise AdminRequiredError("إلغاء تفعيل الأجهزة متاح لصاحب الاشتراك فقط.")
 
     # الاشتراك يُقرأ من جهة المسؤول لا من الطلب: بهذا لا يمكن أن يبطل تفعيلًا
     # في جهة أخرى مهما كان المعرّف الذي أرسله.
@@ -522,19 +583,47 @@ def revoke_device(admin: Account, *, activation_id: int) -> DeviceActivation:
 # ---------------------------------------------------------------------------
 def authorize_installer_download(
     account: Account, *, raw_device_id: str
-) -> tuple[Subscription, DeviceActivation]:
-    """يفحص شروط تحميل المثبّت **الأربعة** ويعيد الاشتراك والجهاز.
+) -> tuple[Subscription, DeviceActivation | None]:
+    """يفحص شروط تحميل المثبّت ويعيد الاشتراك والجهاز المفعّل إن وُجد.
 
     الشروط، بالترتيب الذي تُفحص به:
 
     1. الهوية موثوقة — تحقَّق منها المسار قبل الوصول إلى هنا.
     2. الحساب مرتبط بجهة ونشط — ``load_account``.
     3. حالة الاشتراك ``active`` أو ``trial`` ولم ينتهِ تاريخه.
-    4. الجهاز الطالب **هو** الجهاز المفعّل على الاشتراك.
+    4. **لا جهاز آخر** يشغل خانة الاشتراك.
+
+    ⚠️ **الشرط الرابع كان «الجهاز الطالب هو المفعّل»، وكان يقفل النظام.**
+
+    هوية الجهاز التي تُفعَّل يولّدها الـRuntime على الحاسب، والـRuntime
+    **داخل المثبّت**. فاشتراط تفعيلٍ سابقٍ للتحميل كان يعني: لا تنزيل بلا
+    تفعيل، ولا تفعيل بلا الملف الذي لا يُنزَّل — دائرة لا مخرج منها لأول
+    جهاز. وقد كانت الإضافة تكسرها بتفعيل **بصمة المتصفح** العشوائية، فتشغل
+    الخانةَ الوحيدة بهويةٍ لا يملكها الـRuntime، فيُردّ تفعيله بعد التثبيت
+    بـ23505 ويبقى الحساب عالقًا بلا برنامج يعمل.
+
+    ما يحميه الاشتراط الجديد أدقّ وأصدق: المثبّت **ملف واحد لكل العملاء**
+    لا سرّ فيه، والرابط أصلًا قصير العمر ومحمي برمز الحساب. الذي يجب منعه
+    هو أن يسحب **حاسبٌ ثانٍ** المثبّت بينما اشتراك صاحبه يعمل على حاسب
+    آخر — وهذا ما يفعله الفرع أدناه.
+
+    Returns:
+        (الاشتراك، الجهاز المفعّل) و``None`` مكان الجهاز في أول تثبيت.
 
     Raises:
-        EntitlementError: بفرعٍ يشرح أي شرط لم يتحقق.
+        SubscriptionMissingError | SubscriptionInactiveError: اشتراك لا يسمح.
+        DeviceMismatchError: جهاز آخر يشغل خانة الاشتراك.
     """
     subscription = ensure_serviceable(load_subscription(account.organization_id))
-    device = _verify_against(subscription, raw_device_id)
-    return subscription, device
+
+    current = active_device(subscription.id)
+    if current is None:
+        # أول تثبيت: لا جهاز بعد، والـRuntime هو من سيفعّل نفسه بعد التركيب.
+        return subscription, None
+
+    if current.device_id_hash != hash_device_id(raw_device_id):
+        raise DeviceMismatchError(
+            f"حسابك مفعّل على جهاز آخر ({current.device_name})، وليس على هذا "
+            "الجهاز. يمكنك استبدال الجهاز السابق بهذا الجهاز من نافذة GovMind."
+        )
+    return subscription, _touch_last_seen(current)

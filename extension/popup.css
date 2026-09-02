@@ -288,6 +288,14 @@ body {
   font-size: 12px;
 }
 
+/* تحذير قبل فعل لا يُلغى: استبدال الجهاز يوقف GovMind على حاسب آخر،
+   فيأخذ لون التحذير لا لون الملاحظة العادية. */
+.note--warn {
+  background-color: var(--warn-soft);
+  border-inline-start-color: var(--warn);
+  color: var(--warn);
+}
+
 /* --------------------------------------------------------- الحقائق */
 .facts {
   margin: 0 0 var(--space-3);
@@ -357,11 +365,39 @@ body {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 60ms ease;
+}
+
+/* ⚠️ **حلقة تركيز ظاهرة.** من يتنقّل بلوحة المفاتيح يجب أن يرى أين هو.
+   `:focus-visible` لا `:focus`: لا تظهر الحلقة لمن ضغط بالفأرة. */
+.button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* انخفاض طفيف عند الضغط — تأكيد لمسيّ أن الضغطة وصلت. */
+.button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .button:disabled {
   opacity: 0.55;
-  cursor: progress;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* حركة تُلغى لمن طلب تقليل الحركة في نظامه. */
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+
+  .button:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .button--primary {
@@ -373,10 +409,42 @@ body {
   background-color: var(--brand-strong);
 }
 
+.button--primary:active:not(:disabled) {
+  background-color: var(--brand-strong);
+}
+
+/* زرّ ثانوي **محدَّد الإطار**: يُقرأ زرًّا لا نصًّا، ويتباين مع الأول
+   بالشكل لا باللون وحده. */
+.button--outline {
+  background-color: transparent;
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.button--outline:hover:not(:disabled) {
+  background-color: var(--brand-soft);
+}
+
+.button--outline:active:not(:disabled) {
+  background-color: var(--brand-soft);
+  border-color: var(--brand-strong);
+}
+
+/* حجم القرار: هدف لمس مريح لخيارٍ هو كل الخطوة. */
+.button--lg {
+  padding: var(--space-3) var(--space-4);
+  font-size: 14px;
+  min-block-size: 44px;
+}
+
 .button--secondary {
   background-color: var(--surface);
   border-color: var(--border-strong);
   color: var(--foreground);
+}
+
+.button--secondary:hover:not(:disabled) {
+  background-color: var(--surface-muted);
 }
 
 .button--ghost {
@@ -500,4 +568,66 @@ body {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* ------------------------------------------------- التبديل بين الشاشتين */
+/* رابط نصّي لا زرّ ممتلئ: «إنشاء حساب» إجراء ثانوي بجانب الدخول، وزرّان
+   ممتلئان متجاوران يجعلان المستخدم يتردّد أيهما المقصود. */
+.switcher {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.switcher__link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.switcher__link:hover {
+  text-decoration: underline;
+}
+
+.field__hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------- اختيار طريقة البدء */
+/* ⚠️ **شارة الصدق.** النسخة أكاديمية ولا رسوم فيها، والشارة تقول ذلك قبل
+   أن يقرأ المستخدم كلمة «اشتراك» أو «شهري» فيظنّ أن هناك ما يُدفع. */
+.demo-badge {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--warn-soft);
+  border: 1px dashed var(--warn);
+  border-radius: var(--radius-sm);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ⚠️ **زرّان بعرض النافذة، لا بطاقتان.** الخطوة كلها اختيار، فالخيار
+   نفسه هو ما يُعرض — لا عنوانٌ وقائمةُ مزايا فوقه تجعله تفصيلًا في صفحة
+   تعريف. */
+.plan-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+
+/* ملصق صغير تحت الزرّ المعطّل: يقول سبب التعطيل بدل أن يتركه لغزًا. */
+.plan-note {
+  margin: calc(var(--space-2) * -1) 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }

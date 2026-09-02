@@ -38,15 +38,35 @@ def test_unknown_provider_error_lists_supported_values():
         assert name in message
 
 
-def test_supported_providers_are_the_expected_five():
-    """خمسة الآن بعد إضافة `llamacpp` — والأربعة السابقة **باقية كما هي**."""
+def test_supported_providers_are_the_expected_six():
+    """ستة الآن بعد إضافة `livekit` — والخمسة السابقة **باقية كما هي**.
+
+    ⚠️ **الغرض من تثبيت المجموعة**: إضافة مزوّد قرارٌ يُقرأ، لا تفصيل
+    يمرّ. وهذه القائمة تُفشل الاختبار حتى يُنتبَه إليه.
+    """
     assert set(SUPPORTED_PROVIDERS) == {
         "mock",
         "oracle",
         "lmstudio",
         "local",
         "llamacpp",
+        "livekit",
     }
+
+
+def test_livekit_is_the_only_cloud_provider():
+    """⚠️ **حدّ الخصوصية.** كل مزوّد آخر يُبقي نصّ المحادثة على الجهاز أو
+    السيرفر؛ `livekit` وحده يرسله إلى خدمة خارجية. لو صار غيرُه سحابيًّا
+    يومًا، وجب أن يُعلن ذلك في تسميته كما يفعل هذا.
+    """
+    from app.ai.factory import _PROVIDERS
+
+    cloud = {
+        name
+        for name, provider in _PROVIDERS.items()
+        if "سحاب" in getattr(provider, "PRODUCT_LABEL", "")
+    }
+    assert cloud == {"livekit"}
 
 
 # ---------------------------------------------------------------------------

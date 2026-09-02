@@ -10,14 +10,19 @@ import pytest
 
 from govmind_runtime.control_plane import (
     ActivationRejectedError,
+    ActivationResult,
+    DeviceNotActivatedError,
     Entitlement,
     ModelArtifactInfo,
     OfflineError,
     SubscriptionBlockedError,
 )
-from govmind_runtime.identity import DeviceIdentity
+from govmind_runtime.identity import DeviceCredentialStore, DeviceIdentity
 from govmind_runtime.service import RuntimeService
 from govmind_runtime.state import Phase
+
+#: بيان اعتماد مزيّف يعيده الـBackend المزيّف. **ليس سرًّا حقيقيًا.**
+FAKE_CREDENTIAL = "test-device-credential-value-0123456789abcdef"
 
 
 class FakeControlPlane:
@@ -25,15 +30,26 @@ class FakeControlPlane:
 
     def __init__(self) -> None:
         self.activations: list[dict] = []
+        self.seen_credentials: list[str] = []
+        self.issued_credential = FAKE_CREDENTIAL
         self.activate_error: Exception | None = None
         self.entitlement_error: Exception | None = None
+        self.artifact_error: Exception | None = None
         self.entitlement_value = Entitlement(
             status="active",
             expires_at="2027-01-01T00:00:00+00:00",
             is_usable=True,
             blocked_reason=None,
             device_name="حاسب الاختبار",
+            account_email="owner@example.test",
         )
+        self.chats: list[dict] = []
+        self.chat_error: Exception | None = None
+        self.chat_reply: dict = {
+            "reply": "الرياض هي عاصمة المملكة العربية السعودية.",
+            "provider": "livekit",
+            "cloud": True,
+        }
         self.artifact = ModelArtifactInfo(
             download_url="https://blob.test/m.gguf?sig=SECRET",
             file_name="govmind-model.gguf",
@@ -47,14 +63,30 @@ class FakeControlPlane:
         self.activations.append(
             {"token": token, "secret": device_secret, "name": device_name}
         )
-        return {"activation_id": 1}
+        return ActivationResult(
+            credential=self.issued_credential,
+            activation_id=1,
+            status="active",
+            expires_at="2027-01-01T00:00:00+00:00",
+        )
 
-    def entitlement(self, device_secret):
+    def entitlement(self, device_credential):
+        self.seen_credentials.append(device_credential)
         if self.entitlement_error:
             raise self.entitlement_error
         return self.entitlement_value
 
-    def model_artifact(self, device_secret):
+    def chat(self, *, device_credential, message, history):
+        self.seen_credentials.append(device_credential)
+        self.chats.append({"message": message, "history": list(history)})
+        if self.chat_error:
+            raise self.chat_error
+        return dict(self.chat_reply)
+
+    def model_artifact(self, device_credential):
+        self.seen_credentials.append(device_credential)
+        if self.artifact_error:
+            raise self.artifact_error
         return self.artifact
 
 
@@ -103,14 +135,26 @@ class FakeSupervisor:
 
 @pytest.fixture
 def service(config, protector):
-    """خدمة بكل أطرافها مزيّفة، وهوية على قرص مؤقت."""
+    """خدمة بكل أطرافها مزيّفة، وهوية وبيان اعتماد على قرص مؤقت."""
     return RuntimeService(
         config,
         identity=DeviceIdentity(config.data_dir, protector),
+        credentials=DeviceCredentialStore(config.data_dir, protector),
         control_plane=FakeControlPlane(),
         model_store=FakeModelStore(),
         supervisor=FakeSupervisor(),
     )
+
+
+def link(service: RuntimeService, credential: str = FAKE_CREDENTIAL) -> None:
+    """يجعل الجهاز مربوطًا بلا مرور بمسار الاستبدال كاملًا.
+
+    **الربط = بيان اعتماد محفوظ**، لا ملف هوية. الهوية تُنشأ كذلك لأن
+    مسارات الاستبدال تتوقّعها، لكنها وحدها لا تجعل الجهاز مربوطًا —
+    ويحرس ذلك `test_identity_file_alone_does_not_mean_linked`.
+    """
+    service._identity.ensure()
+    service._credentials.store(credential)
 
 
 def wait_for_worker(service: RuntimeService) -> None:
@@ -129,7 +173,7 @@ def test_starts_awaiting_activation(service):
 
 
 def test_activation_generates_a_local_secret_and_sends_it(service):
-    """السرّ يولَّد **محليًا** ثم يُرسل — لا يأتي من الإضافة ولا من السيرفر."""
+    """سرّ الهوية يولَّد **محليًا** ثم يُرسل — لا يأتي من الإضافة ولا السيرفر."""
     service.activate("installation-token-value-32-chars")
     wait_for_worker(service)
 
@@ -138,6 +182,94 @@ def test_activation_generates_a_local_secret_and_sends_it(service):
     assert sent[0]["token"] == "installation-token-value-32-chars"
     assert sent[0]["secret"] == service._identity.load()
     assert len(sent[0]["secret"]) >= 32
+
+
+def test_redemption_issues_and_stores_one_device_credential(service):
+    """**بيان اعتماد واحد يصدره السيرفر ويُحفظ محميًّا.**
+
+    هذا هو ما تغيّر: لم يعد سرّ الجهاز المولَّد محليًا يصادق شيئًا.
+    """
+    assert service.is_activated is False
+
+    service.activate("installation-token-value-32-chars")
+    wait_for_worker(service)
+
+    assert service.is_activated is True
+    assert service._credentials.load() == FAKE_CREDENTIAL
+    # وحُفظ **معمّى** لا خامًا: الملف لا يحوي القيمة كما هي.
+    assert FAKE_CREDENTIAL.encode() not in service._credentials.path.read_bytes()
+
+
+def test_identity_file_alone_does_not_mean_linked(service):
+    """ملف هوية بلا بيان اعتماد **ليس ربطًا**.
+
+    الحالة واقعية: تثبيت سابق ولّد هويته ثم تعثّر قبل أن يصله بيان اعتماد.
+    عدُّه مربوطًا كان يجعل كل نداء بعده يفشل بلا سبب مفهوم.
+    """
+    service._identity.ensure()
+    assert service.is_activated is False
+    service.prepare()
+    assert service.state.phase is Phase.AWAITING_ACTIVATION
+
+
+def test_activation_reuses_an_existing_identity(service):
+    """هويةٌ قائمة تُعاد لا تُستبدل.
+
+    توليد هوية ثانية على الجهاز نفسه يجعل القاعدة تراه جهازًا آخر فيصطدم
+    بقيد «جهاز فعّال واحد».
+    """
+    existing = service._identity.ensure()
+
+    service.activate("installation-token-value-32-chars")
+    wait_for_worker(service)
+
+    assert service._identity.load() == existing
+    assert service._control.activations[0]["secret"] == existing
+
+
+def test_credential_never_appears_in_the_returned_snapshot(service):
+    """⚠️ **بيان الاعتماد لا يخرج إلى المستدعي.**
+
+    المستدعي المباشر هو مسار HTTP يردّ على الإضافة، فخروجه هنا تسريبٌ إلى
+    المتصفح.
+    """
+    snapshot = service.activate("installation-token-value-32-chars")
+    wait_for_worker(service)
+
+    assert FAKE_CREDENTIAL not in str(snapshot)
+    assert FAKE_CREDENTIAL not in str(service.state.account_snapshot())
+    assert FAKE_CREDENTIAL not in str(service.state.snapshot())
+
+
+def test_credential_is_attached_to_control_plane_calls(service):
+    """الـRuntime هو من يلصق بيان الاعتماد، في جانب الخادم."""
+    link(service)
+    service.refresh_entitlement()
+
+    assert service._control.seen_credentials == [FAKE_CREDENTIAL]
+
+
+def test_credential_is_protected_by_dpapi_on_windows(service):
+    """على ويندوز، الحماية DPAPI بنطاق الجهاز لا تخزينًا نصيًّا."""
+    import sys
+
+    if sys.platform != "win32":
+        pytest.skip("DPAPI متاح على ويندوز وحده.")
+    link(service)
+    assert service.credential_protection == "dpapi-local-machine"
+
+
+def test_a_server_that_issues_no_credential_is_a_failure(service):
+    """ردٌّ بلا بيان اعتماد يترك الجهاز بلا وسيلة مصادقة — فهو فشل."""
+    from govmind_runtime.control_plane import ControlPlaneError
+
+    service._control.activate_error = ControlPlaneError(
+        "لم تُصدر خدمة GovMind ربطًا لهذا الجهاز."
+    )
+    with pytest.raises(ControlPlaneError):
+        service.activate("installation-token-value-32-chars")
+
+    assert service.is_activated is False
 
 
 def test_device_name_carries_no_user_identity(service):
@@ -153,9 +285,9 @@ def test_device_name_carries_no_user_identity(service):
 
 
 def test_failed_activation_leaves_no_orphan_identity(service):
-    """**لا تبقَ هوية بلا تفعيل.**
+    """**لا تبقَ هوية ولا بيان اعتماد بعد ربط فشل.**
 
-    لولا هذا لظنّ الإقلاع التالي أن الجهاز مفعَّل، ففشل كل نداء بلا سبب
+    لولا هذا لظنّ الإقلاع التالي أن الجهاز مربوط، ففشل كل نداء بلا سبب
     مفهوم للمستخدم.
     """
     service._control.activate_error = ActivationRejectedError("رمز غير صالح")
@@ -164,7 +296,24 @@ def test_failed_activation_leaves_no_orphan_identity(service):
         service.activate("installation-token-value-32-chars")
 
     assert service.is_activated is False
+    assert service._identity.exists() is False
     assert service.state.phase is Phase.AWAITING_ACTIVATION
+
+
+def test_a_pre_existing_identity_survives_a_failed_activation(service):
+    """هوية كانت قائمة قبل النداء **لا تُمحى** بفشل ربط.
+
+    قد يكون عليها تفعيل قائم في القاعدة؛ محوها يهجره ويجبر العميل على
+    استبدال جهاز لا داعي لاستبداله.
+    """
+    existing = service._identity.ensure()
+    service._control.activate_error = ActivationRejectedError("رمز غير صالح")
+
+    with pytest.raises(ActivationRejectedError):
+        service.activate("installation-token-value-32-chars")
+
+    assert service._identity.load() == existing
+    assert service.is_activated is False
 
 
 def test_activation_is_idempotent(service):
@@ -177,6 +326,7 @@ def test_activation_is_idempotent(service):
     wait_for_worker(service)
 
     assert service._identity.load() == secret
+    assert service._credentials.load() == FAKE_CREDENTIAL
     assert len(service._control.activations) == 1
 
 
@@ -193,7 +343,7 @@ def test_second_device_rejection_is_surfaced(service):
 # الاستحقاق
 # ===========================================================================
 def test_blocked_subscription_stops_the_model(service):
-    service._identity.ensure()
+    link(service)
     service._control.entitlement_value = Entitlement(
         status="expired",
         expires_at="2026-01-01T00:00:00+00:00",
@@ -209,15 +359,62 @@ def test_blocked_subscription_stops_the_model(service):
 
 
 def test_revoked_device_stops_the_model(service):
-    """إبطال المسؤول للتفعيل: يتوقف المودل وتظهر رسالة تشرح."""
-    service._identity.ensure()
+    """جهاز أُبطل أو استُبدل: يتوقف المودل، **ويُمحى بيان اعتماده**.
+
+    الرجوع إلى «بانتظار الربط» لا إلى «ممنوع» مقصود: العميل يملك مخرجًا —
+    يعيد الربط من الإضافة — بينما «ممنوع» شاشةٌ لا باب فيها.
+    """
+    link(service)
+    service._control.entitlement_error = DeviceNotActivatedError(
+        "هذا الجهاز غير مرتبط بأي اشتراك فعّال."
+    )
+
+    assert service.refresh_entitlement() is False
+    assert service.state.phase is Phase.AWAITING_ACTIVATION
+    assert service.is_activated is False
+    assert service._credentials.exists() is False
+    assert service._supervisor.stopped >= 1
+
+
+def test_a_rejected_credential_is_not_resent_forever(service):
+    """بيان اعتماد رُفض **لا يُعاد إرساله**: يُمحى فورًا."""
+    link(service)
+    service._control.entitlement_error = DeviceNotActivatedError("مرفوض")
+
+    service.refresh_entitlement()
+    seen_after_first = len(service._control.seen_credentials)
+
+    service.refresh_entitlement()
+    assert len(service._control.seen_credentials) == seen_after_first
+
+
+def test_expired_subscription_keeps_the_link_but_blocks(service):
+    """اشتراك منتهٍ **يمنع ولا يفكّ الربط**: الجهاز ما زال جهاز صاحبه."""
+    link(service)
     service._control.entitlement_error = SubscriptionBlockedError(
-        "هذا الجهاز غير مفعَّل على أي اشتراك."
+        "انتهى اشتراكك بتاريخ ٢٠٢٦-٠١-٠١."
     )
 
     assert service.refresh_entitlement() is False
     assert service.state.phase is Phase.BLOCKED
-    assert service._supervisor.stopped >= 1
+    assert service.is_activated is True
+
+
+def test_entitlement_fills_the_account_display(service):
+    """بريد صاحب الحساب يصل الحالة، **ولا يخرج في `/health`**."""
+    link(service)
+    service._control.entitlement_value = Entitlement(
+        status="trial",
+        expires_at="2027-01-01T00:00:00+00:00",
+        is_usable=True,
+        blocked_reason=None,
+        device_name="حاسب الاختبار",
+        account_email="owner@example.test",
+    )
+
+    assert service.refresh_entitlement() is True
+    assert service.state.account_snapshot()["account_email"] == "owner@example.test"
+    assert "account_email" not in service.state.snapshot()
 
 
 def test_offline_does_not_stop_the_service(service):
@@ -226,7 +423,7 @@ def test_offline_does_not_stop_the_service(service):
     اشتراك تحقّقنا منه قبل ساعة لا يبطل لأن الشبكة انقطعت، ومنع موظف من
     العمل بسبب شبكته عقوبة على غير ذنب.
     """
-    service._identity.ensure()
+    link(service)
     service._control.entitlement_error = OfflineError("لا اتصال")
 
     assert service.refresh_entitlement() is True
@@ -238,7 +435,7 @@ def test_offline_does_not_stop_the_service(service):
 # المودل والمحرّك
 # ===========================================================================
 def test_prepare_downloads_then_starts(service):
-    service._identity.ensure()
+    link(service)
     service.prepare()
 
     assert service._models.downloads == 1
@@ -247,7 +444,7 @@ def test_prepare_downloads_then_starts(service):
 
 
 def test_prepare_skips_download_when_model_installed(service):
-    service._identity.ensure()
+    link(service)
     service._models.installed = True
     service.prepare()
 
@@ -259,7 +456,7 @@ def test_prepare_skips_download_when_model_installed(service):
 def test_download_failure_surfaces_as_error_phase(service):
     from govmind_runtime.model_store import ModelVerificationError
 
-    service._identity.ensure()
+    link(service)
     service._models.error = ModelVerificationError("ملف المودل تالف أو غير مطابق.")
     service.prepare()
 
@@ -271,7 +468,7 @@ def test_download_failure_surfaces_as_error_phase(service):
 def test_model_start_failure_surfaces_in_arabic(service):
     from govmind_runtime.llama_supervisor import SupervisorError
 
-    service._identity.ensure()
+    link(service)
     service._models.installed = True
     service._supervisor.error = SupervisorError(
         "توقّف محرّك المودل أثناء التحميل."
@@ -283,7 +480,7 @@ def test_model_start_failure_surfaces_in_arabic(service):
 
 
 def test_blocked_subscription_prevents_model_start(service):
-    service._identity.ensure()
+    link(service)
     service._models.installed = True
     service._control.entitlement_value = Entitlement(
         status="suspended",
@@ -300,7 +497,7 @@ def test_blocked_subscription_prevents_model_start(service):
 
 def test_shutdown_stops_the_child_process(service):
     """**لا تُترك عملية يتيمة** تحجز الذاكرة وملف المودل."""
-    service._identity.ensure()
+    link(service)
     service._models.installed = True
     service.prepare()
     service.shutdown()
@@ -315,7 +512,7 @@ def test_cancel_download_is_forwarded(service):
 
 def test_state_snapshot_hides_internal_details(service):
     """⚠️ لقطة الحالة لا تحمل منفذًا ولا مسارًا ولا سرًّا."""
-    service._identity.ensure()
+    link(service)
     service._models.installed = True
     service.prepare()
 

@@ -307,7 +307,7 @@ class LlamaSupervisor:
         self._last_error = self._read_stderr()
         raise SupervisorError(
             "استغرق تحميل المودل وقتًا أطول من المتوقّع ولم يجهز. أعد تشغيل "
-            "GovMind، وإن تكرر فراجع مسؤول النظام."
+            "GovMind، وإن تكرر فتواصل مع الدعم."
         )
 
     def _read_stderr(self) -> str | None:

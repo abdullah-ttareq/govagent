@@ -45,6 +45,8 @@ SYSTEM_PROMPT = """أنت «GovMind»، مساعد ذكاء اصطناعي عا�
 - ضع تنبيه التحقق — عند وجوده — في سطر أخير موجز، لا في فقرة طويلة.
 """
 
+from datetime import datetime, timedelta, timezone
+
 
 #: تعليمات إضافية تُلحق بالـSystem Prompt عند وجود مقاطع مسترجَعة من ملفات
 #: الجهة. تُفصل عن النص الأساسي حتى يبقى سلوك المحادثة العادية كما هو تمامًا
@@ -68,12 +70,49 @@ CONTEXT_INSTRUCTIONS = """
 """
 
 
-def build_system_prompt(context: str | None = None) -> str:
-    """يبني تعليمات النظام، مع مقاطع الملفات إن وُجدت.
+#: توقيت الجهة. **الرياض لا UTC ولا توقيت السيرفر**: الموظف يكتب «اليوم»
+#: و«غدًا» بتقويم مكتبه، وسيرفرٌ في منطقة أخرى يجعل التاريخ يسبق أو يتأخر
+#: يومًا كاملًا عند حدّ منتصف الليل.
+#
+#: **إزاحة ثابتة لا `ZoneInfo("Asia/Riyadh")`.** السعودية على +03:00 طوال
+#: العام بلا توقيت صيفي، فالإزاحة الثابتة تعطي النتيجة نفسها **بلا حزمة
+#: `tzdata`** — وهي غير موجودة في بايثون ويندوز، ويشتكي منها PyInstaller
+#: أصلًا (`Hidden import "tzdata" not found`). اعتمادُها كان سيُسقط
+#: الـRuntime المجمَّد على جهاز العميل بدل أن يعطيه تاريخًا.
+RIYADH = timezone(timedelta(hours=3), "Asia/Riyadh")
 
-    بلا سياق يعود النص الأساسي كما هو حرفيًا، فالمحادثة العادية بلا ملفات لا
-    تتأثر إطلاقًا بمسار الـRAG.
+_WEEKDAYS = (
+    "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد",
+)
+
+
+def _today_line(now: datetime | None = None) -> str:
+    """سطر التاريخ الذي يُحقن في تعليمات النظام.
+
+    ⚠️ **يُحسب عند كل طلب ولا يُكتب في النص إطلاقًا.** تاريخٌ مكتوب في
+    ثابت يصير خطأً صامتًا في اليوم التالي لكتابته، ويظلّ المودل يجيب به
+    شهورًا وهو واثق.
     """
+    moment = (now or datetime.now(RIYADH)).astimezone(RIYADH)
+    return (
+        "\n\n## التاريخ والوقت\n"
+        f"- اليوم {_WEEKDAYS[moment.weekday()]}، "
+        f"{moment:%Y-%m-%d}، الساعة {moment:%H:%M} بتوقيت الرياض.\n"
+        "- اعتمد هذا التاريخ وحده في أي حساب لمدة أو موعد أو مهلة، ولا "
+        "تعتمد على تاريخ من معرفتك المسبقة.\n"
+        "- معرفتك بما جرى بعد تدريبك ناقصة؛ حداثةُ التاريخ لا تعني أنك "
+        "تعرف أحداثه."
+    )
+
+
+def build_system_prompt(
+    context: str | None = None, *, now: datetime | None = None
+) -> str:
+    """يبني تعليمات النظام، مع التاريخ الحالي ومقاطع الملفات إن وُجدت.
+
+    ``now`` للاختبار وحده؛ في التشغيل تُقرأ الساعة عند كل طلب.
+    """
+    prompt = SYSTEM_PROMPT + _today_line(now)
     if not context or not context.strip():
-        return SYSTEM_PROMPT
-    return SYSTEM_PROMPT + CONTEXT_INSTRUCTIONS.format(context=context.strip())
+        return prompt
+    return prompt + CONTEXT_INSTRUCTIONS.format(context=context.strip())

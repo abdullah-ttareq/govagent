@@ -18,7 +18,48 @@ import pytest
 from app.core.config import settings
 
 
+#: إعدادات تُصفَّر طوال جلسة الاختبار.
+#
+# **الخطر الذي تمنعه:** ملف ‎.env‎ على جهاز المطوّر قد يحمل بيانات مشروع
+# Supabase حقيقي ومفاتيح Azure حقيقية. اختبارٌ يقرأها قد يكتب في قاعدة
+# إنتاج أو يوقّع رابطًا حقيقيًا — وهو أسوأ من اختبار يفشل.
+#
+# الاختبار الذي يحتاج قيمة يضبطها بـ`monkeypatch` داخله، وهو أضيق نطاقًا
+# فيغلب هذا التصفير ويُستعاد بعده تلقائيًا.
+_NEUTRALIZED_SETTINGS: tuple[str, ...] = (
+    "supabase_url",
+    "supabase_anon_key",
+    "supabase_service_role_key",
+    "supabase_jwt_secret",
+    "device_hash_pepper",
+    "azure_storage_account",
+    "azure_storage_container",
+    "azure_storage_connection_string",
+    "azure_installer_blob_name",
+    "azure_model_blob_name",
+    "azure_model_sha256",
+    "azure_storage_blob_name",
+)
+
+
 @pytest.fixture(autouse=True, scope="session")
-def force_mock_model_provider() -> None:
-    """يعزل الاختبارات عن أي مزود مودل حقيقي طوال الجلسة."""
+def isolate_from_developer_environment() -> None:
+    """يعزل الاختبارات عن كل خدمة خارجية طوال الجلسة.
+
+    **مزود المودل** مثبّت على ``mock``: مطوّرٌ يضبط ``MODEL_PROVIDER=lmstudio``
+    كان كل اختبار محادثة عنده يستدعي مودلًا حقيقيًا — دقائق لكل اختبار،
+    ونتيجة تتغيّر بتغيّر جهاز المشغّل.
+
+    **مخزن البيانات** مثبّت على ``memory``: الاختبارات مبنية على الجهات
+    التجريبية المزروعة فيه. مطوّرٌ يضبط ``DATA_STORE=supabase`` كانت تفشل
+    عنده عشرات الاختبارات لسبب لا علاقة له بشيفرته — وأخطر من ذلك أن
+    اختبارًا قد يكتب في مشروعه الحقيقي.
+
+    **بيانات الاعتماد** تُفرَّغ للسبب نفسه.
+    """
     settings.model_provider = "mock"
+    settings.data_store = "memory"
+    settings.azure_model_size_bytes = 0
+
+    for name in _NEUTRALIZED_SETTINGS:
+        setattr(settings, name, "")

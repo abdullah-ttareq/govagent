@@ -2,6 +2,7 @@
 
 from ..core.config import settings
 from .base import ModelProvider, ModelProviderError
+from .livekit_provider import LiveKitModelProvider
 from .llamacpp_provider import LlamaCppModelProvider
 from .lmstudio_provider import LMStudioModelProvider
 from .local_provider import LocalModelProvider
@@ -15,6 +16,9 @@ _PROVIDERS: dict[str, type[ModelProvider]] = {
     # المودل داخل GovMind Runtime — لا يحتاج LM Studio مثبَّتة.
     "llamacpp": LlamaCppModelProvider,
     "local": LocalModelProvider,
+    # ⚠️ **الوحيد السحابي.** يرسل نصّ المحادثة إلى خدمة خارجية، بخلاف كل
+    # ما سبقه. اختياره قرارٌ يخصّ خصوصية البيانات لا الأداء وحده.
+    "livekit": LiveKitModelProvider,
 }
 
 #: القيم المقبولة لـMODEL_PROVIDER، تُذكر في رسالة الخطأ وفي التوثيق.

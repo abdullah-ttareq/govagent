@@ -18,10 +18,15 @@ from fastapi.testclient import TestClient
 
 from govmind_runtime.api import SESSION_HEADER, LocalApi
 from govmind_runtime.control_plane import ActivationRejectedError
-from govmind_runtime.identity import DeviceIdentity
+from govmind_runtime.identity import DeviceCredentialStore, DeviceIdentity
 from govmind_runtime.service import RuntimeService
 from govmind_runtime.state import Phase
-from tests.test_service import FakeControlPlane, FakeModelStore, FakeSupervisor
+from tests.test_service import (
+    FAKE_CREDENTIAL,
+    FakeControlPlane,
+    FakeModelStore,
+    FakeSupervisor,
+)
 
 
 @pytest.fixture
@@ -29,6 +34,7 @@ def api(config, protector):
     service = RuntimeService(
         config,
         identity=DeviceIdentity(config.data_dir, protector),
+        credentials=DeviceCredentialStore(config.data_dir, protector),
         control_plane=FakeControlPlane(),
         model_store=FakeModelStore(),
         supervisor=FakeSupervisor(),

@@ -1,119 +1,167 @@
 /**
- * حراسة قائمة المظهر كما يراها الموظف.
+ * مبدّل المظهر: **زرّ واحد ينقل مباشرة بين وضعين**.
  *
- * تمنع رجوع: خيار «تلقائي» في القائمة، وأيقونة الكمبيوتر، وضياع اسم خيار أو
- * أيقونته، وظهور علامة الصح على أكثر من خيار، وتعطّل الإغلاق بـEscape أو
- * بالنقر خارج القائمة.
+ * ما يثبته هذا الملف:
  *
- * **الموضع والقياسات لا تُختبر هنا:** jsdom لا يحسب تخطيطًا ولا يطبّق CSS
- * خارجيًا، فكل أبعاده أصفار. خروج القائمة عن الشاشة فُحص في متصفح حقيقي.
+ * * وضعان لا ثلاثة، وبلا «تلقائي» ولا «الجهاز» ولا أيقونة شاشة.
+ * * الأيقونة تصف **الفعل** لا الحالة: قمرٌ في الفاتح، وشمسٌ في الداكن.
+ * * نقرة واحدة تكفي — لا قائمة ولا خطوة ثانية.
+ * * الاختيار يُحفظ ويُطبَّق ويبقى بعد إعادة التحميل.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import ThemeToggle from "@/components/ThemeToggle";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
-beforeEach(() => {
-  cleanup();
-  window.localStorage.clear();
-  delete document.documentElement.dataset.theme;
-});
+const LIGHT_LABEL = "تفعيل الوضع الفاتح";
+const DARK_LABEL = "تفعيل الوضع الداكن";
 
-/** يرسم المبدّل ويفتح قائمته — كل اختبار يبدأ من شجرة نظيفة. */
-function openMenu() {
-  render(<ThemeToggle />);
-  fireEvent.click(screen.getByRole("button", { name: /المظهر/ }));
-  return screen.getByRole("menu");
+/** شريحة الشمس: فعلها «تفعيل الوضع الفاتح». */
+function sun() {
+  return screen.getByRole("button", { name: LIGHT_LABEL });
 }
 
-describe("خيارات القائمة", () => {
-  it("خياران فقط: فاتح وداكن", () => {
-    const menu = openMenu();
-    const items = within(menu).getAllByRole("menuitemradio");
-    expect(items.map((item) => item.textContent?.trim())).toEqual([
-      "فاتح",
-      "داكن",
-    ]);
+/** شريحة القمر: فعلها «تفعيل الوضع الداكن». */
+function moon() {
+  return screen.getByRole("button", { name: DARK_LABEL });
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
+});
+
+afterEach(cleanup);
+
+// ===========================================================================
+// ١) وضعان فقط
+// ===========================================================================
+describe("وضعان لا ثلاثة", () => {
+  it("شريحتان فقط — لا خيار ثالث ولا قائمة", () => {
+    render(<ThemeToggle />);
+
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryAllByRole("menuitemradio")).toHaveLength(0);
   });
 
-  it("لا يعرض «تلقائي» ولا أي مرادف له", () => {
-    const menu = openMenu();
-    expect(within(menu).queryByText("تلقائي")).toBeNull();
-    expect(within(menu).queryByText("الجهاز")).toBeNull();
-    expect(within(menu).queryByText(/System/i)).toBeNull();
-  });
+  it("⚠️ لا «تلقائي» ولا «الجهاز» ولا أي مرادف", () => {
+    // وضعٌ يتبع الجهاز يتبدّل تحت يد الموظف بلا فعل منه.
+    render(<ThemeToggle />);
+    const markup = document.body.innerHTML;
 
-  it("لكل خيار اسم ظاهر وأيقونة", () => {
-    const menu = openMenu();
-    for (const item of within(menu).getAllByRole("menuitemradio")) {
-      expect(item.querySelector("span")?.textContent?.trim()).toBeTruthy();
-      expect(item.querySelector("svg")).not.toBeNull();
+    for (const word of ["تلقائي", "الجهاز", "النظام", "system", "auto"]) {
+      expect(markup).not.toContain(word);
     }
   });
 
-  it("علامة الصح على الخيار المحدد وحده", () => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
-    const menu = openMenu();
-    const checked = within(menu)
-      .getAllByRole("menuitemradio")
-      .filter((item) => item.getAttribute("aria-checked") === "true");
-    expect(checked).toHaveLength(1);
-    expect(checked[0].textContent?.trim()).toBe("داكن");
-    // الصح رسمٌ إضافي داخل الخيار المحدد: أيقونتان بدل واحدة.
-    expect(checked[0].querySelectorAll("svg")).toHaveLength(2);
-  });
+  it("⚠️ لا أيقونة شاشة أو حاسب — شمس وقمر فقط", () => {
+    // أيقونة شاشة تعني وضعًا ثالثًا لا وجود له، فتَعِد بما لا يُنفَّذ.
+    const { container } = render(<ThemeToggle />);
 
-  it("قيمة system القديمة لا تترك القائمة بلا خيار محدد", () => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, "system");
-    const menu = openMenu();
-    const checked = within(menu)
-      .getAllByRole("menuitemradio")
-      .filter((item) => item.getAttribute("aria-checked") === "true");
-    expect(checked).toHaveLength(1);
-    expect(checked[0].textContent?.trim()).toBe("فاتح");
+    expect(container.querySelectorAll("svg")).toHaveLength(2);
+    expect(container.querySelectorAll("rect")).toHaveLength(0);
   });
 });
 
-describe("زرّ القائمة", () => {
-  it("يصف الوضع الفعّال في الفاتح وفي الداكن", () => {
+// ===========================================================================
+// ٢) الأيقونة تصف الفعل لا الحالة
+// ===========================================================================
+describe("الأيقونة والنصّ يصفان الفعل", () => {
+  it("في الوضع الفاتح: الشمس مضغوطة والقمر لا", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "light");
     render(<ThemeToggle />);
-    expect(
-      screen.getByRole("button", { name: "المظهر: فاتح" }),
-    ).toBeDefined();
 
-    cleanup();
-    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
-    render(<ThemeToggle />);
-    expect(screen.getByRole("button", { name: "المظهر: داكن" })).toBeDefined();
+    expect(sun().getAttribute("aria-pressed")).toBe("true");
+    expect(moon().getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("اختيار «داكن» يحفظ ويطبّق ويغلق القائمة", () => {
-    const menu = openMenu();
-    fireEvent.click(within(menu).getByText("داكن"));
+  it("في الوضع الداكن: القمر مضغوط والشمس لا", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
+    render(<ThemeToggle />);
+
+    expect(moon().getAttribute("aria-pressed")).toBe("true");
+    expect(sun().getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("⚠️ الأيقونتان مختلفتان فعلًا", () => {
+    // لو رُسمت الأيقونة نفسها في الشريحتين، لصارتا لا تقولان شيئًا.
+    const { container } = render(<ThemeToggle />);
+    const paths = [...container.querySelectorAll("path")].map((n) =>
+      n.getAttribute("d"),
+    );
+
+    expect(paths).toHaveLength(2);
+    expect(paths[0]).not.toBe(paths[1]);
+  });
+});
+
+// ===========================================================================
+// ٣) نقرة واحدة تبدّل
+// ===========================================================================
+describe("التبديل المباشر", () => {
+  it("من الفاتح إلى الداكن بنقرة واحدة", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "light");
+    render(<ThemeToggle />);
+
+    fireEvent.click(moon());
 
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(moon().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("ومن الداكن إلى الفاتح بنقرة واحدة", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
+    render(<ThemeToggle />);
+
+    fireEvent.click(sun());
+
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(sun().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("نقرتان تعيدان الوضع كما كان", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "light");
+    render(<ThemeToggle />);
+
+    fireEvent.click(moon());
+    fireEvent.click(sun());
+
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
   });
 });
 
-describe("إغلاق القائمة", () => {
-  it("بزرّ Escape", () => {
-    openMenu();
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("menu")).toBeNull();
+// ===========================================================================
+// ٤) البقاء بعد إعادة التحميل
+// ===========================================================================
+describe("حفظ الاختيار", () => {
+  it("⚠️ الاختيار يبقى بعد إعادة تركيب الصفحة", () => {
+    // إعادةُ التركيب تحاكي تحديث الصفحة وإعادة تشغيل الـRuntime: المصدر
+    // في الحالتين هو `localStorage` نفسه.
+    render(<ThemeToggle />);
+    fireEvent.click(moon());
+    cleanup();
+
+    render(<ThemeToggle />);
+
+    expect(moon().getAttribute("aria-pressed")).toBe("true");
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
-  it("بالنقر خارجها", () => {
-    openMenu();
-    fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole("menu")).toBeNull();
+  it("قيمة `system` قديمة تُقرأ فاتحًا لا وضعًا ثالثًا", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "system");
+    render(<ThemeToggle />);
+
+    expect(sun().getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("النقر داخلها لا يغلقها", () => {
-    const menu = openMenu();
-    fireEvent.mouseDown(menu);
-    expect(screen.queryByRole("menu")).not.toBeNull();
+  it("قيمة تالفة لا تكسر الزرّ", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "لا شيء");
+    render(<ThemeToggle />);
+
+    expect(sun().getAttribute("aria-pressed")).toBe("true");
   });
 });

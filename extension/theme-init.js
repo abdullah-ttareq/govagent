@@ -14,14 +14,11 @@
 (function () {
   var KEY = "govagent.theme";
   try {
+    // ⚠️ خياران فقط. أي قيمة أخرى — بما فيها `system` أو `auto` المخزّنة
+    // في تركيبة قديمة — تُقرأ «فاتحًا»، فلا يبقى للخيار المحذوف أثر.
     var stored = localStorage.getItem(KEY);
-    var resolved =
-      stored === "light" || stored === "dark"
-        ? stored
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
-    document.documentElement.dataset.theme = resolved;
+    document.documentElement.dataset.theme =
+      stored === "dark" ? "dark" : "light";
   } catch (error) {
     document.documentElement.dataset.theme = "light";
   }

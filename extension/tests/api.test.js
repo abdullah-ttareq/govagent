@@ -10,7 +10,6 @@ import { BACKEND_URL } from "../config.js";
 import {
   ApiError,
   NetworkError,
-  activateDevice,
   fetchSubscription,
   login,
   requestInstallerUrl,
@@ -59,7 +58,7 @@ describe("عنوان ثابت وقت البناء", () => {
   it("لا تنادي الإضافة Supabase ولا Azure مباشرة", async () => {
     await login("a@b.test", "secret");
     await fetchSubscription("token");
-    await activateDevice("token", "device-1234", "جهاز ويندوز");
+    await verifyDevice("token", "device-1234");
     await requestInstallerUrl("token", "device-1234");
 
     for (const [url] of fetchMock.mock.calls) {

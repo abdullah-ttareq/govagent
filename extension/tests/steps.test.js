@@ -13,6 +13,7 @@ import {
   STEP_TITLES,
   TOTAL_STEPS,
   isDeviceTaken,
+  isThisDeviceLinked,
   resolveStep,
 } from "../lib/steps.js";
 
@@ -78,7 +79,11 @@ describe("٣) الاشتراك", () => {
 
   it("يسمح بالفترة التجريبية كالاشتراك الفعّال", () => {
     expect(
-      resolveStep({ ...signedIn, subscription: { ...usable, status: "trial" } }),
+      resolveStep({
+        ...signedIn,
+        planAcknowledged: true,
+        subscription: { ...usable, status: "trial" },
+      }),
     ).toBe(STEPS.INSTALL);
   });
 
@@ -93,7 +98,8 @@ describe("٣) الاشتراك", () => {
   });
 
   it("لا يفترض شيئًا إن لم تصل حالة الاشتراك", () => {
-    expect(resolveStep({ ...signedIn, subscription: null })).toBe(STEPS.ACTIVATE);
+    // فشل مغلق: يُعرض التثبيت لا التفعيل، فالإضافة لا تفعّل جهازًا أصلًا.
+    expect(resolveStep({ ...signedIn, subscription: null })).toBe(STEPS.INSTALL);
   });
 });
 
@@ -110,12 +116,46 @@ describe("٤) الجهاز الواحد", () => {
     expect(step).toBe(STEPS.DEVICE_TAKEN);
   });
 
-  it("يعرض التفعيل حين لا جهاز مفعّلًا بعد", () => {
+  it("⚠️ أول جهاز يبدأ بالتثبيت لا بالتفعيل", () => {
+    // **اختبار انحدار للعطل الحيّ.** كان يعيد `ACTIVATE`، فيرى صاحب أول
+    // جهاز شاشةَ «تفعيل هذا الجهاز» وزرُّها يفعّل بصمة المتصفح فيشغل
+    // خانةَ الجهاز الوحيدة بهوية لا يملكها الـRuntime.
     const step = resolveStep({
       ...signedIn,
+      planAcknowledged: true,
       subscription: { ...usable, device: null, requires_activation: true },
     });
-    expect(step).toBe(STEPS.ACTIVATE);
+    expect(step).toBe(STEPS.INSTALL);
+  });
+
+  it("⚠️ `resolveStep` لا يعيد `ACTIVATE` في أي حال", () => {
+    // الإضافة لا تفعّل جهازًا إطلاقًا — التفعيل من الـRuntime وحده.
+    const combinations = [];
+    for (const requires of [true, false]) {
+      for (const plan of [true, false]) {
+        for (const download of ["idle", "running", "done"]) {
+          for (const started of [true, false]) {
+            for (const runtime of [null, { needs_activation: true }, { is_ready: true }]) {
+              combinations.push(
+                resolveStep({
+                  ...signedIn,
+                  planAcknowledged: plan,
+                  installStarted: started,
+                  download,
+                  runtime,
+                  subscription: {
+                    ...usable,
+                    device: null,
+                    requires_activation: requires,
+                  },
+                }),
+              );
+            }
+          }
+        }
+      }
+    }
+    expect(combinations).not.toContain(STEPS.ACTIVATE);
   });
 
   it("غياب الجهاز ليس «جهازًا آخر أخذه»", () => {
@@ -125,7 +165,7 @@ describe("٤) الجهاز الواحد", () => {
     expect(isDeviceTaken({ device: { is_current_device: false } })).toBe(true);
   });
 
-  it("شاشة «جهاز آخر» تسبق شاشة التفعيل", () => {
+  it("شاشة «جهاز آخر» تسبق كل شاشات التثبيت", () => {
     // كلا الشرطين صحيح هنا؛ الأولوية للأوضح سببًا.
     const step = resolveStep({
       ...signedIn,
@@ -135,26 +175,60 @@ describe("٤) الجهاز الواحد", () => {
         device: { ...usable.device, is_current_device: false },
       },
     });
-    expect(step).not.toBe(STEPS.ACTIVATE);
+    expect(step).not.toBe(STEPS.INSTALL);
+    expect(step).not.toBe(STEPS.CHOOSE_PLAN);
   });
 });
 
-describe("٥) التنزيل", () => {
-  it("يعرض زر التثبيت على جهاز مفعّل واشتراك سليم", () => {
-    expect(resolveStep({ ...signedIn, subscription: usable })).toBe(STEPS.INSTALL);
+describe("٥) التنزيل والتثبيت — بالترتيب الصحيح", () => {
+  const ready = { ...signedIn, subscription: usable, planAcknowledged: true };
+
+  it("اختيار طريقة البدء يسبق التثبيت", () => {
+    expect(resolveStep({ ...signedIn, subscription: usable })).toBe(
+      STEPS.CHOOSE_PLAN,
+    );
+  });
+
+  it("يعرض زر التثبيت بعد إقرار طريقة البدء", () => {
+    expect(resolveStep(ready)).toBe(STEPS.INSTALL);
   });
 
   it("يعرض شريط التقدّم أثناء التنزيل", () => {
-    expect(
-      resolveStep({ ...signedIn, subscription: usable, download: "running" }),
-    ).toBe(STEPS.DOWNLOADING);
+    expect(resolveStep({ ...ready, download: "running" })).toBe(
+      STEPS.DOWNLOADING,
+    );
   });
 
-  it("بعد اكتمال التنزيل ينتظر فتح المثبّت", () => {
-    // لا شاشة «اكتمل التنزيل» منفصلة: هذه تقول الشيء نفسه وتنتظر النتيجة.
+  it("⚠️ بعد اكتمال التنزيل: تعليمات الفتح، **لا انتظار الـRuntime**", () => {
+    // **نصف العطل الثاني.** كانت الإضافة تنتظر برنامجًا لم يُثبَّت بعد،
+    // فتعرض «جارٍ البحث» والملف ما زال في مجلد التنزيلات لم يفتحه أحد.
+    expect(resolveStep({ ...ready, download: "done" })).toBe(
+      STEPS.INSTALLER_READY,
+    );
+  });
+
+  it("الانتظار يبدأ بعد أن يعلن المستخدم أنه فتح المثبّت", () => {
     expect(
-      resolveStep({ ...signedIn, subscription: usable, download: "done" }),
+      resolveStep({ ...ready, download: "done", installStarted: true }),
     ).toBe(STEPS.AWAITING_RUNTIME);
+  });
+
+  it("⚠️ انتهاء المهلة يعطي شاشة تشخيص لا انتظارًا بلا نهاية", () => {
+    expect(
+      resolveStep({
+        ...ready,
+        download: "done",
+        installStarted: true,
+        runtimeTimedOut: true,
+      }),
+    ).toBe(STEPS.INSTALL_HELP);
+  });
+
+  it("Runtime مثبَّت يتخطّى شاشة الخطة وشاشات المثبّت", () => {
+    // من ثبّت البرنامج لا يُسأل عن خطة ولا يُعرض له «نزّل المثبّت».
+    expect(
+      resolveStep({ ...signedIn, subscription: usable, runtime: { is_ready: true } }),
+    ).toBe(STEPS.INSTALLED);
   });
 });
 
@@ -178,12 +252,14 @@ describe("٦) الـRuntime بعد التثبيت", () => {
     ).toBe(STEPS.INSTALLED);
   });
 
+  const started = { planAcknowledged: true, download: "done", installStarted: true };
+
   it("Runtime ينتظر التفعيل يعرض شاشة انتظار المثبّت", () => {
     expect(
       resolveStep({
         ...signedIn,
+        ...started,
         subscription: usable,
-        download: "done",
         runtime: needsActivation,
       }),
     ).toBe(STEPS.AWAITING_RUNTIME);
@@ -193,6 +269,7 @@ describe("٦) الـRuntime بعد التثبيت", () => {
     expect(
       resolveStep({
         ...signedIn,
+        ...started,
         subscription: usable,
         runtime: needsActivation,
         handingOver: true,
@@ -202,8 +279,65 @@ describe("٦) الـRuntime بعد التثبيت", () => {
 
   it("تنزيل المودل يعرض شاشة التجهيز", () => {
     expect(
-      resolveStep({ ...signedIn, subscription: usable, runtime: preparing }),
+      resolveStep({ ...signedIn, ...started, subscription: usable, runtime: preparing }),
     ).toBe(STEPS.PREPARING_MODEL);
+  });
+
+  // ---------------------------------------------------------------------
+  // ⚠️ العطل الحيّ: شاشة تفعيل تظهر عند الإقلاع بلا فعل من المستخدم
+  // ---------------------------------------------------------------------
+  it("⚠️ Runtime عالق في «activating» لا يعرض شاشة التفعيل عند الإقلاع", () => {
+    // **ما رآه المستخدم حيًّا.** بقيّةُ تثبيتٍ سابق متعثّر تقول
+    // `phase: "activating"`، فكانت النافذة تعرض «جارٍ تفعيل هذا الجهاز»
+    // فور فتحها: بلا جلسة تركيب، وبلا تنزيل، وبلا أن يطلب أحدٌ شيئًا.
+    const step = resolveStep({
+      ...signedIn,
+      planAcknowledged: true,
+      subscription: usable,
+      runtime: { ...needsActivation, phase: "activating" },
+      installStarted: false,
+    });
+
+    expect(step).not.toBe(STEPS.ACTIVATING_DEVICE);
+    expect(step).toBe(STEPS.INSTALL);
+  });
+
+  it("⚠️ ولا شاشة انتظار ولا تجهيز قبل أن يبدأ المستخدم التثبيت", () => {
+    for (const runtime of [needsActivation, preparing]) {
+      const step = resolveStep({
+        ...signedIn,
+        planAcknowledged: true,
+        subscription: usable,
+        runtime,
+        installStarted: false,
+      });
+      expect([STEPS.AWAITING_RUNTIME, STEPS.PREPARING_MODEL]).not.toContain(step);
+    }
+  });
+
+  it("Runtime جاهز يُعرض دائمًا، بدأ المستخدم تثبيتًا أو لم يبدأ", () => {
+    // الجهوز ليس تقدّمًا يُنتظر: هو النتيجة، فلا شرط عليه.
+    expect(
+      resolveStep({
+        ...signedIn,
+        planAcknowledged: true,
+        subscription: usable,
+        runtime: ready,
+        installStarted: false,
+      }),
+    ).toBe(STEPS.INSTALLED);
+  });
+
+  it("⚠️ شاشة الفحص المحايدة تسبق كل شيء أثناء الإقلاع", () => {
+    const step = resolveStep({
+      ...signedIn,
+      subscription: usable,
+      runtime: { ...needsActivation, phase: "activating" },
+      booting: true,
+    });
+
+    expect(step).toBe(STEPS.CHECKING);
+    expect(STEP_TITLES[step]).toBe("جاري التحقق...");
   });
 
   it("اشتراك محجوب يسبق حالة الـRuntime", () => {
@@ -248,5 +382,219 @@ describe("سلامة الجداول", () => {
       expect(value).toBeGreaterThanOrEqual(1);
       expect(value).toBeLessThanOrEqual(TOTAL_STEPS);
     }
+  });
+});
+
+/* ======================================================================== */
+/**
+ * ترتيب ما بعد التنزيل — **الحالات التي أعطت العميل شاشة لا مخرج منها**.
+ *
+ * كل حالة هنا تقابل نهايةً مختلفةً وإجراءً مختلفًا. جمعُها تحت شاشة واحدة
+ * — أو تحت شريط تنبيه فوق مؤشّر دوّار — هو ما جعل العميل ينتظر بلا نهاية.
+ */
+describe("١٠) ما بعد التنزيل: أربع نهايات لا واحدة", () => {
+  const downloaded = {
+    ...signedIn,
+    subscription: usable,
+    planAcknowledged: true,
+    download: "done",
+  };
+
+  it("لم يُفتح الملف بعد ⇒ شاشة الفتح", () => {
+    expect(resolveStep(downloaded)).toBe(STEPS.INSTALLER_READY);
+  });
+
+  it("رفض المتصفح الفتح ⇒ شاشة قائمة بذاتها لا رسالة عابرة", () => {
+    expect(resolveStep({ ...downloaded, openFailed: true })).toBe(
+      STEPS.OPEN_FAILED,
+    );
+  });
+
+  it("⚠️ رفضُ الفتح لا يضع المستخدم في الانتظار", () => {
+    // `installStarted` تبقى كاذبة، وهي شرط شاشة الانتظار كلها.
+    const step = resolveStep({ ...downloaded, openFailed: true });
+    expect(step).not.toBe(STEPS.AWAITING_RUNTIME);
+    expect(step).not.toBe(STEPS.ACTIVATING_DEVICE);
+  });
+
+  it("نجح الفتح ⇒ انتظار اكتمال التثبيت", () => {
+    expect(resolveStep({ ...downloaded, installStarted: true })).toBe(
+      STEPS.AWAITING_RUNTIME,
+    );
+  });
+
+  it("انتهت المهلة ⇒ شاشة تشخيص لا حركة مستمرة", () => {
+    expect(
+      resolveStep({ ...downloaded, installStarted: true, runtimeTimedOut: true }),
+    ).toBe(STEPS.INSTALL_HELP);
+  });
+
+  it("تعذّر تسليم الرمز ⇒ شاشته هو", () => {
+    expect(
+      resolveStep({
+        ...downloaded,
+        installStarted: true,
+        handoverFailure: "لم يصل رمز التركيب.",
+      }),
+    ).toBe(STEPS.HANDOVER_FAILED);
+  });
+
+  it("رفض الخادم التفعيل ⇒ شاشة أخرى غيرها", () => {
+    expect(
+      resolveStep({
+        ...downloaded,
+        installStarted: true,
+        activationFailure: "حسابك مفعّل على جهاز آخر.",
+      }),
+    ).toBe(STEPS.ACTIVATION_FAILED);
+  });
+
+  it("⚠️ الفشل يسبق شاشات التقدّم مهما كانت حالة الـRuntime", () => {
+    // شاشة تقدّم فوق فشلٍ وقع هي «الانتظار بلا نهاية» بعينه.
+    for (const runtime of [
+      null,
+      { needs_activation: true, is_ready: false, phase: "awaiting_activation" },
+      { needs_activation: false, is_ready: false, phase: "activating" },
+    ]) {
+      expect(
+        resolveStep({
+          ...downloaded,
+          runtime,
+          installStarted: true,
+          handingOver: true,
+          activationFailure: "مرفوض",
+        }),
+      ).toBe(STEPS.ACTIVATION_FAILED);
+    }
+  });
+
+  it("⚠️ الفشل يُعرض ولو لم يبدأ المستخدم تثبيتًا في هذه الجلسة", () => {
+    // التسليم يقع عند الدخول نفسه إن كان Runtime مثبَّتًا ينتظر ربطًا.
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        planAcknowledged: true,
+        runtime: { needs_activation: true, is_ready: false },
+        handoverFailure: "لم يصل رمز التركيب.",
+      }),
+    ).toBe(STEPS.HANDOVER_FAILED);
+  });
+});
+
+describe("١١) عنوان الانتظار يصف ما يحدث فعلًا", () => {
+  it("⚠️ «بانتظار اكتمال تثبيت GovMind» لا «تفعيل الجهاز»", () => {
+    // العميل قرأ «جارٍ تفعيل هذا الجهاز» بينما لا تفعيل يجري.
+    expect(STEP_TITLES[STEPS.AWAITING_RUNTIME]).toBe(
+      "بانتظار اكتمال تثبيت GovMind",
+    );
+    expect(STEP_TITLES[STEPS.AWAITING_RUNTIME]).not.toContain("تفعيل");
+  });
+
+  it("«جارٍ تفعيل الجهاز» محجوزة للتسليم الفعلي وحده", () => {
+    expect(STEP_TITLES[STEPS.ACTIVATING_DEVICE]).toContain("تفعيل");
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        planAcknowledged: true,
+        download: "done",
+        installStarted: true,
+        runtime: { needs_activation: true, is_ready: false, phase: "activating" },
+        handingOver: true,
+      }),
+    ).toBe(STEPS.ACTIVATING_DEVICE);
+  });
+
+  it("عنوان المهلة يقول «لم يبدأ» لا «لم يظهر»", () => {
+    expect(STEP_TITLES[STEPS.INSTALL_HELP]).toBe("لم يبدأ GovMind بعد");
+  });
+});
+
+describe("١٢) الجهاز المفعَّل هو هذا الحاسب", () => {
+  const takenElsewhere = {
+    ...usable,
+    device: { ...usable.device, is_current_device: false },
+  };
+
+  it("جهاز آخر بلا Runtime هنا ⇒ شاشة الاستبدال", () => {
+    expect(
+      resolveStep({ ...signedIn, subscription: takenElsewhere }),
+    ).toBe(STEPS.DEVICE_TAKEN);
+  });
+
+  it("⚠️ Runtime مربوط على هذا الحاسب ينفي «جهاز آخر»", () => {
+    // بصمة المتصفح التي تقارن بها `verify` ليست هوية الجهاز التي سجّلها
+    // الـRuntime، فالمقارنة تعطي «جهاز آخر» على الحاسب نفسه بعد تثبيت
+    // ناجح. وجودُ Runtime مربوط إثباتٌ أقوى: لا يعمل إلا هنا، ولا يُعدّ
+    // مربوطًا إلا ببيان اعتماد أصدره الخادم.
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: takenElsewhere,
+        runtime: { needs_activation: false, is_ready: true },
+      }),
+    ).toBe(STEPS.INSTALLED);
+  });
+
+  it("Runtime ينتظر ربطًا **لا** ينفيها: لم يُربط بعد", () => {
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: takenElsewhere,
+        runtime: { needs_activation: true, is_ready: false },
+      }),
+    ).toBe(STEPS.DEVICE_TAKEN);
+  });
+
+  it("`isThisDeviceLinked` تقيس الربط لا الوجود", () => {
+    expect(isThisDeviceLinked(null)).toBe(false);
+    expect(isThisDeviceLinked({ needs_activation: true })).toBe(false);
+    expect(isThisDeviceLinked({ needs_activation: false })).toBe(true);
+  });
+});
+
+describe("١٣) استئناف بعد إغلاق النافذة", () => {
+  it("⚠️ Runtime بدأ والنافذة مغلقة ⇒ إعادة الفتح تلتقط النجاح", () => {
+    // النافذة تُغلق بفقد التركيز — وهو ما يحدث حتمًا عند فتح المثبّت.
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        planAcknowledged: true,
+        download: "done",
+        installStarted: true,
+        runtime: { needs_activation: false, is_ready: true },
+      }),
+    ).toBe(STEPS.INSTALLED);
+  });
+
+  it("Runtime يجهّز المودل ⇒ شاشة تقدّم لا شاشة تنزيل", () => {
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        planAcknowledged: true,
+        download: "done",
+        installStarted: true,
+        runtime: {
+          needs_activation: false,
+          is_ready: false,
+          phase: "downloading_model",
+        },
+      }),
+    ).toBe(STEPS.PREPARING_MODEL);
+  });
+
+  it("تنزيل مكتمل ورفضٌ للفتح ⇒ العودة إلى شاشة الفتح لا إلى التنزيل", () => {
+    expect(
+      resolveStep({
+        ...signedIn,
+        subscription: usable,
+        planAcknowledged: true,
+        download: "done",
+        openFailed: true,
+      }),
+    ).toBe(STEPS.OPEN_FAILED);
   });
 });

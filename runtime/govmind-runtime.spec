@@ -12,8 +12,9 @@
 ويُنزَّل بعد التفعيل، والثانية ينسخها المثبّت من `runtime/vendor/`.
 """
 
-import sys
 from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 
@@ -28,8 +29,15 @@ a = Analysis(
     binaries=[],
     # الواجهة الثابتة يضعها المثبّت بجانب الملف التنفيذي لا داخله: تحديث
     # الواجهة وحدها يجب ألا يستلزم إعادة بناء المفسّر كله.
-    datas=[],
+    #
+    # ⚠️ **ملف شهادات `certifi` يُحزَم صراحةً.** `httpx` يقرؤه ليبني سياق
+    # TLS، وغيابه يُسقط كل نداء بـ`FileNotFoundError` من
+    # `ssl.create_default_context` — وهو عطل ظهر حيًّا في سجلّ جهاز عميل.
+    # الاعتماد على خطّاف PyInstaller التلقائي وحده تركه رهنًا بنسخة الأداة.
+    datas=collect_data_files("certifi"),
     hiddenimports=[
+        # يقرأ منها httpx مسار ملف الشهادات.
+        "certifi",
         # uvicorn يحمّل هذه ديناميكيًا، فلا يراها المحلّل الساكن.
         "uvicorn.logging",
         "uvicorn.loops.auto",

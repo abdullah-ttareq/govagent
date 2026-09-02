@@ -343,8 +343,13 @@ def test_login_proxies_to_supabase_auth(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["access_token"] == "issued-access-token"
-    assert body["account"]["organization_id"] == ORG
+    assert body["account"]["email"] == "person@govmind.test"
     assert captured["email"] == "Person@GovMind.test"
+
+    # ⚠️ **لا دور ولا معرّف مساحة في الرد.** المنتج اشتراك فردي: لا لقب
+    # «مسؤول» يُعرض ولا مفردات مؤسسات، فلا تخرج البنيةُ الداخلية أصلًا.
+    assert "organization_id" not in body["account"]
+    assert "role" not in body["account"]
 
 
 def test_login_request_has_no_url_or_key_field():

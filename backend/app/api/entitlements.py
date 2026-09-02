@@ -25,15 +25,20 @@ from ..schemas.entitlements import (
     ActiveDeviceOut,
     DeviceActivateRequest,
     DeviceListResponse,
+    DeviceReplaceRequest,
+    DeviceReplaceResponse,
     DeviceVerifyRequest,
     InstallerDownloadRequest,
     InstallerDownloadResponse,
+    RegistrationRequest,
+    RegistrationResponse,
     SubscriptionStatusResponse,
 )
 from ..schemas.runtime import InstallationSessionResponse
 from ..services import entitlement_service as entitlements
 from ..services import installation_session_service as sessions
 from ..services import installer_service
+from ..services import registration_service
 from ..services.entitlement_service import (
     Account,
     AccountNotProvisionedError,
@@ -49,6 +54,12 @@ from ..services.entitlement_service import (
     SubscriptionMissingError,
 )
 from ..services.installer_service import InstallerError, InstallerNotConfiguredError
+from ..services.registration_service import (
+    EmailAlreadyRegisteredError,
+    RegistrationError,
+    WeakPasswordError,
+    WorkspaceConflictError,
+)
 from ..services.supabase_auth import (
     InvalidCredentialsError,
     InvalidSupabaseTokenError,
@@ -245,10 +256,7 @@ def login(payload: AccountLoginRequest) -> AccountSessionResponse:
             SupabaseIdentity(user_id=session.user_id, email=session.email)
         )
         account_out = AccountOut(
-            email=account.email,
-            full_name=account.full_name,
-            role=account.role,  # type: ignore[arg-type]
-            organization_id=account.organization_id,
+            email=account.email, full_name=account.full_name
         )
     except (EntitlementError, SupabaseError):
         # الدخول نجح والرمز صالح؛ نقص ملف العمل حالة تعرضها الإضافة برسالتها.
@@ -262,6 +270,83 @@ def login(payload: AccountLoginRequest) -> AccountSessionResponse:
     )
 
 
+@router.post(
+    "/register",
+    response_model=RegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="إنشاء حساب جديد باشتراك تجريبي",
+    responses={
+        409: {"description": "البريد مسجَّل مسبقًا"},
+        422: {"description": "كلمتا المرور غير متطابقتين أو بيانات ناقصة"},
+        503: {"description": "خدمة الحسابات غير مهيّأة أو لا تستجيب"},
+    },
+)
+def register(payload: RegistrationRequest) -> RegistrationResponse:
+    """ينشئ حسابًا ومساحة شخصية واشتراكًا تجريبيًا (مقعد واحد، ٣٠ يومًا).
+
+    **لا يُسأل العميل عن جهة**: المساحة التي يحتاجها عزل RLS تُولَّد من
+    معرّف الحساب ولا تظهر في أي شاشة.
+
+    **الكتابات الأربع ذرّية** في دالة القاعدة، وحساب المصادقة يُحذف تعويضًا
+    إن فشلت — فلا يبقى بريد محجوز بحساب بلا جهة.
+
+    عند نجاح الدخول التلقائي تُعاد الجلسة فتتابع الإضافة مباشرة إلى حالة
+    الاشتراك وتفعيل الجهاز. وإن اشترط المشروع تأكيد البريد تُعاد
+    `requires_email_confirmation` وتعرض الإضافة رسالة التأكيد.
+
+    ⚠️ **لا يُطلب من المستخدم رابط ولا مفتاح**، ولا يخرج مفتاح Supabase من
+    السيرفر بأي حال.
+    """
+    try:
+        result = registration_service.register(
+            full_name=payload.full_name,
+            email=payload.email,
+            password=payload.password,
+        )
+    except (EmailAlreadyRegisteredError, WorkspaceConflictError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except WeakPasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except SupabaseAuthNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except RegistrationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except SupabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    account_out: AccountOut | None = None
+    if result.session is not None:
+        try:
+            account = entitlements.load_account(
+                SupabaseIdentity(user_id=result.user_id, email=result.email)
+            )
+            account_out = AccountOut(
+                email=account.email, full_name=account.full_name
+            )
+        except (EntitlementError, SupabaseError):
+            # الحساب أُنشئ بنجاح؛ نقص ملف العمل هنا لا يُبطل التسجيل.
+            account_out = None
+
+    return RegistrationResponse(
+        requires_email_confirmation=result.requires_email_confirmation,
+        email=result.email,
+        access_token=result.session.access_token if result.session else None,
+        refresh_token=result.session.refresh_token if result.session else None,
+        expires_in=result.session.expires_in if result.session else None,
+        account=account_out,
+    )
+
+
 @router.get(
     "/me",
     response_model=AccountOut,
@@ -270,12 +355,7 @@ def login(payload: AccountLoginRequest) -> AccountSessionResponse:
 )
 def read_me(account: CurrentAccount) -> AccountOut:
     """يعيد ملف عمل صاحب الرمز. **يعمل ولو كان الاشتراك منتهيًا.**"""
-    return AccountOut(
-        email=account.email,
-        full_name=account.full_name,
-        role=account.role,  # type: ignore[arg-type]
-        organization_id=account.organization_id,
-    )
+    return AccountOut(email=account.email, full_name=account.full_name)
 
 
 # ---------------------------------------------------------------------------
@@ -381,18 +461,86 @@ def verify_device(
     )
 
 
+@router.post(
+    "/devices/replace",
+    response_model=DeviceReplaceResponse,
+    summary="استبدال الجهاز السابق بهذا الجهاز",
+    responses={
+        401: {"description": "كلمة المرور غير صحيحة"},
+        403: {"description": "الاشتراك لا يسمح بتفعيل جهاز"},
+        409: {"description": "محاولة استبدال متزامنة — أعد المحاولة"},
+    },
+)
+def replace_device(
+    payload: DeviceReplaceRequest, account: CurrentAccount
+) -> DeviceReplaceResponse:
+    """يبطل الجهاز الفعّال ويفعّل هذا الجهاز، **بلا موافقة أحد**.
+
+    المنتج اشتراك فردي ولا مسؤول فيه: من غيّر حاسبه يفعلها بنفسه.
+
+    ⚠️ **كلمة المرور تُطلب من جديد ويتحقق منها Supabase Auth.** رمز الدخول
+    وحده لا يكفي لعملية توقف GovMind على حاسب آخر — جلسةٌ متروكة مفتوحة
+    على جهاز عام يجب ألا تُفقد صاحبها جهازه.
+
+    الإبطال والتفعيل **عملية ذرّية واحدة** في القاعدة، فلا لحظة يكون فيها
+    الحساب بلا جهاز ولا لحظة يكون فيها بجهازين.
+    """
+    # ① إثبات الهوية بكلمة المرور قبل أي كتابة.
+    try:
+        sign_in(account.email, payload.password)
+    except InvalidCredentialsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="كلمة المرور غير صحيحة. أعد إدخالها للمتابعة.",
+        ) from exc
+    except SupabaseAuthNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except SupabaseAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    # ② الاستبدال الذرّي.
+    try:
+        device, replaced = entitlements.replace_device(
+            account,
+            raw_device_id=payload.device_id,
+            device_name=payload.device_name,
+        )
+        subscription = entitlements.load_subscription(account.organization_id)
+    except DeviceIdError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except EntitlementError as exc:
+        raise _to_http(exc) from exc
+    except SupabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    return DeviceReplaceResponse(
+        replaced=replaced,
+        subscription=_to_status_response(
+            subscription, device, current_hash=device.device_id_hash
+        ),
+    )
+
+
 @router.get(
     "/devices",
     response_model=DeviceListResponse,
-    summary="سجل أجهزة الاشتراك (لمسؤول الجهة)",
-    responses={403: {"description": "الإجراء لمسؤول الجهة فقط"}},
+    summary="سجل أجهزة الاشتراك",
+    responses={403: {"description": "الإجراء لصاحب الاشتراك فقط"}},
 )
 def list_devices(account: CurrentAccount) -> DeviceListResponse:
     """يعيد أجهزة اشتراك **جهة صاحب الطلب** — الفعّال والمبطل معًا."""
     if not account.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="عرض أجهزة الاشتراك متاح لمسؤول الجهة فقط.",
+            detail="عرض أجهزة الاشتراك متاح لصاحب الاشتراك فقط.",
         )
     try:
         subscription = entitlements.load_subscription(account.organization_id)
@@ -412,9 +560,9 @@ def list_devices(account: CurrentAccount) -> DeviceListResponse:
 @router.post(
     "/devices/{activation_id}/revoke",
     response_model=ActiveDeviceOut,
-    summary="إلغاء تفعيل جهاز (لمسؤول الجهة)",
+    summary="إلغاء تفعيل جهاز",
     responses={
-        403: {"description": "الإجراء لمسؤول الجهة فقط"},
+        403: {"description": "الإجراء لصاحب الاشتراك فقط"},
         404: {"description": "التفعيل غير موجود في جهة صاحب الطلب"},
     },
 )
@@ -487,19 +635,23 @@ def create_installation_session(
     summary="رابط تحميل مؤقّت لمثبّت GovMind",
     responses={
         403: {"description": "الاشتراك لا يسمح بالتحميل"},
-        409: {"description": "الطلب من جهاز غير مفعّل"},
+        409: {"description": "جهاز آخر يشغل خانة الاشتراك"},
         503: {"description": "تخزين Azure غير مهيّأ على السيرفر"},
     },
 )
 def installer_download_url(
     payload: InstallerDownloadRequest, account: CurrentAccount
 ) -> InstallerDownloadResponse:
-    """يعيد رابط SAS قصير العمر بعد التأكد من **الشروط الأربعة**.
+    """يعيد رابط SAS قصير العمر بعد التأكد من الشروط.
 
     1. الهوية موثوقة (رمز Supabase صالح).
     2. حالة الاشتراك `active` أو `trial`.
     3. الاشتراك لم ينتهِ تاريخه.
-    4. الجهاز الطالب هو الجهاز المفعّل على الاشتراك.
+    4. **لا جهاز آخر** يشغل خانة الاشتراك.
+
+    ⚠️ **الشرط الرابع لا يشترط تفعيلًا سابقًا**، ولا يجوز أن يشترطه: هوية
+    الجهاز يولّدها الـRuntime، والـRuntime داخل هذا الملف نفسه. انظر
+    `authorize_installer_download`.
 
     ⚠️ الرابط **لا يُعرض للمستخدم**: تمرّره الإضافة إلى `chrome.downloads`.
     وسلسلة اتصال Azure لا تخرج من السيرفر بأي حال.

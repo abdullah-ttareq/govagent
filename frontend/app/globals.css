@@ -17,27 +17,32 @@
 
      الألوان الدلالية محجوزة لمعناها: الأخضر للنجاح («نشط»)، والبرتقالي
      للتحذير، والأحمر للخطأ. لا يظهر أيٌّ منها في شعار ولا زرّ ولا فقاعة. */
-  --background: #f7f7f8;
-  --surface: #ffffff;
-  --surface-muted: #f0f0f2;
+  /* ⚠️ **رماديات دافئة لا محايدة.** التصميم المعتمد يبني على عاجيّ
+     مائل إلى الدفء، والرماديُّ المحايد فوقه يُقرأ أزرق باهتًا بجواره.
+     كل درجة هنا تحمل الميل نفسه، فتبقى الأسطح عائلة واحدة. */
+  --background: #efece4;
+  --surface: #fbf9f5;
+  --surface-muted: #f1ede4;
   /* الشريط الجانبي أغمق بدرجة واحدة — يفصله عن المحادثة بلا حدّ ثقيل. */
-  --surface-sidebar: #f3f3f5;
+  --surface-sidebar: #f2eee6;
   --surface-raised: #ffffff;
-  --foreground: #1f2023;
-  --muted: #6b6e76;
-  --border-subtle: #e4e4e7;
-  /* حدّ عناصر التحكم: 3.2:1 على الأبيض — يحقّق WCAG 1.4.11. */
-  --border-strong: #8b8d95;
+  --foreground: #1f1d1a;
+  --muted: #8a8175;
+  --border-subtle: #e2dcd0;
+  /* حدّ عناصر التحكم: 3.2:1 على السطح — يحقّق WCAG 1.4.11. */
+  --border-strong: #93887a;
 
-  /* لون الفعل الأساسي: فحميّ في الفاتح — زرٌّ رصين بلا صخب لوني. */
-  --brand: #26272b;
-  --brand-strong: #3a3b41;
-  --brand-soft: #eeeef0;
-  --brand-contrast: #ffffff;
+  /* لون الفعل الأساسي: فحميّ دافئ — زرّ «محادثة جديدة» وفقاعة المستخدم. */
+  --brand: #1c1a17;
+  --brand-strong: #2e2b26;
+  --brand-soft: #ede8de;
+  --brand-contrast: #faf8f4;
 
-  /* الإبراز الهادئ: روابط وتركيز وعلامة النشط. لا خلفيات واسعة به. */
-  --accent: #4a6fa5;
-  --accent-soft: #eef2f8;
+  /* ⚠️ **الإبراز الذهبيّ: لونٌ واحد ونقاط قليلة.** حلقة الشعار، وأرقام
+     القوائم، وزرّ الإرسال، وحدّ المحادثة النشطة — لا خلفيات واسعة به.
+     نسبته على السطح الفاتح 4.6:1، فيصلح للنصّ الصغير كأرقام القوائم. */
+  --accent: #9c7c3f;
+  --accent-soft: #f4eddd;
 
   --danger: #b42318;
   --danger-soft: #fef3f2;
@@ -50,9 +55,9 @@
   --warning: #c2410c;
   --warning-soft: #fff5ed;
 
-  --focus-ring: #4a6fa559;
-  --scrim: rgb(24 25 28 / 0.45);
-  --shadow-color: 24 25 28;
+  --focus-ring: #9c7c3f59;
+  --scrim: rgb(28 26 23 / 0.45);
+  --shadow-color: 28 26 23;
   --danger-ring: rgb(180 35 24 / 0.25);
 
   /* --- المسافات -------------------------------------------------------- */
@@ -109,26 +114,28 @@
   color-scheme: dark;
 
   /* فحميّ محايد لا أسود صريح: أعمق درجة #17181a، وبلا أي ميل لوني. */
-  --background: #1a1b1e;
-  --surface: #232427;
-  --surface-muted: #2c2d31;
+  /* فحميّ دافئ لا أسود صريح، ويحمل ميل العاجيّ نفسه معكوسًا. */
+  --background: #0e0d0b;
+  --surface: #17150f;
+  --surface-muted: #221f18;
   /* الشريط الجانبي أغمق بدرجة — عكس الوضع الفاتح في الاتجاه نفسه. */
-  --surface-sidebar: #161719;
-  --surface-raised: #26272b;
-  --foreground: #ececee;
-  --muted: #a1a3aa;
-  --border-subtle: #34353a;
+  --surface-sidebar: #131109;
+  --surface-raised: #1d1a13;
+  --foreground: #ece5d6;
+  --muted: #94897a;
+  --border-subtle: #2b2720;
   /* 3.3:1 على السطح الداكن. */
-  --border-strong: #7c7e86;
+  --border-strong: #6f6555;
 
-  /* في الداكن ينقلب الزرّ الأساسي: سطح فاتح بنصّ فحميّ. */
-  --brand: #ececee;
-  --brand-strong: #ffffff;
-  --brand-soft: #2c2d31;
-  --brand-contrast: #1a1b1e;
+  /* في الداكن ينقلب الزرّ الأساسي: سطح عاجيّ بنصّ فحميّ. */
+  --brand: #e8e0cf;
+  --brand-strong: #f5efe2;
+  --brand-soft: #221f18;
+  --brand-contrast: #17150f;
 
-  --accent: #8fb0e0;
-  --accent-soft: #232a34;
+  /* الذهبيّ أنصع على الفحميّ ليبلغ نسبة التباين نفسها. */
+  --accent: #c9a86a;
+  --accent-soft: #241f14;
 
   --danger: #ff9086;
   --danger-soft: #2b1613;
@@ -141,7 +148,7 @@
   --warning: #f9a75c;
   --warning-soft: #2e1d0e;
 
-  --focus-ring: #8fb0e059;
+  --focus-ring: #c9a86a59;
   --scrim: rgb(8 9 10 / 0.66);
   --shadow-color: 0 0 0;
   --danger-ring: rgb(255 144 134 / 0.28);
@@ -163,6 +170,8 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-surface-sidebar: var(--surface-sidebar);
+  /* حجاب الدرج على الشاشات الضيقة — من المتغيّر لا لونًا صريحًا. */
+  --color-scrim: var(--scrim);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-border: var(--danger-border);
@@ -525,17 +534,58 @@ body {
   }
 
   /* مربّع الهوية: يعطي الترويسة ثقلًا بصريًا ويوازن محاذاتها. */
+  /* ⚠️ **حلقة ذهبية لا مربّع أسود بحرف.**
+     التصميم المعتمد يجعل العلامة حلقةً مفرغة بنقطة في مركزها، بلون
+     الإبراز وحده. حرفٌ داخل مربّع داكن كان يسحب الانتباه إلى زاوية
+     الشريط ويتنافس مع اسم المنتج بجواره. */
   .gv-brand__mark {
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    inline-size: 2.25rem;
-    block-size: 2.25rem;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border: 2px solid var(--accent);
+    border-radius: 9999px;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .gv-brand__mark::after {
+    content: "";
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
+    border-radius: 9999px;
+    background-color: var(--accent);
+  }
+
+  /* الحلقة المصمتة: تسبق ردّ المساعد في المحادثة. */
+  .gv-brand__mark--hollow::after {
+    background-color: transparent;
+  }
+
+  /* مبدّل المظهر: شريحتان في غلاف واحد. */
+  .gv-theme__seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    border-radius: 9999px;
+    background-color: var(--surface-muted);
+  }
+
+  .gv-theme__seg > button {
+    display: grid;
+    place-items: center;
+    inline-size: 1.625rem;
+    block-size: 1.625rem;
+    border-radius: 9999px;
+    color: var(--muted);
+    transition: background-color 120ms, color 120ms;
+  }
+
+  .gv-theme__seg > button[aria-pressed="true"] {
     background-color: var(--brand);
     color: var(--brand-contrast);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 700;
   }
 
   /* عنوان قسم داخل الشريط الجانبي. */

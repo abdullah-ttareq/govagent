@@ -26,10 +26,40 @@ const KEYS = {
   installToken: "installToken",
   installTokenExpiresAt: "installTokenExpiresAt",
   runtimePort: "runtimePort",
+  installStage: "installStage",
+  downloadId: "downloadId",
+  downloadFileName: "downloadFileName",
+  planAckFor: "planAckFor",
+  installOwner: "installOwner",
 };
 
-/** مفاتيح إصدارات سابقة لم يعد لها معنى، تُمسح عند الإقلاع. */
-const LEGACY_KEYS = ["apiBaseUrl", "conversationId", "user"];
+/**
+ * مفاتيح إصدارات سابقة لم يعد لها معنى، تُمسح عند الإقلاع.
+ *
+ * ⚠️ **المجموعة الثانية خلّفتها نسخة معطوبة**: كانت تحفظ مرحلة «تفعيل»
+ * أو «انتظار Runtime» بأسماء مفاتيح لم تعد مستعملة. بقاؤها كان يعيد
+ * النافذة إلى شاشة تقدّم عن عملية لا وجود لها.
+ */
+const LEGACY_KEYS = [
+  "apiBaseUrl",
+  "conversationId",
+  "user",
+  "activating",
+  "awaitingRuntime",
+  "awaiting_runtime",
+  "runtimeActivating",
+  "installState",
+  "onboardingStep",
+];
+
+/** قيم `installStage` التي خلّفتها نسخ سابقة ولم تعد صالحة. */
+const LEGACY_STAGES = new Set([
+  "activating",
+  "awaiting_runtime",
+  "awaitingRuntime",
+  "awaiting-runtime",
+  "handing_over",
+]);
 
 async function read(keys) {
   try {
@@ -130,6 +160,160 @@ export async function clearSession() {
   // رمز التركيب يخصّ جلسةً بعينها: تركه بعد الخروج يترك سرًّا صالحًا على
   // جهاز قد يستعمله غير صاحبه.
   await clearInstallToken();
+  // ومرحلة التثبيت تخصّ حسابًا بعينه كذلك — ومعها اسم مالكها، فلا يرث
+  // الحسابُ التالي على هذا الجهاز شيئًا من سابقه.
+  await clearInstallProgress();
+  await remove([KEYS.installOwner]);
+
+  // ⚠️ **`planAckFor` يبقى عمدًا.** هو بريد من أقرّ طريقة البدء، لا علامة
+  // عامة. مسحه كان يعيد عرض شاشة الخطة على صاحبه في كل مرة يعود فيها،
+  // وتركُه لا يسرّب شيئًا إلى غيره: المقارنة بالبريد الحالي، فمن يدخل
+  // بحساب آخر يرى الشاشة كما يجب.
+}
+
+/* -------------------------------------------------------------------------
+   مرحلة التثبيت — تُستأنف بعد إغلاق النافذة
+   ------------------------------------------------------------------------- */
+
+/**
+ * ⚠️ **نافذة الإضافة تُغلق بمجرد أن تفقد التركيز** — وهو ما يحدث حتمًا حين
+ * يفتح المستخدم المثبّت أو يوافق على نافذة ويندوز. فلو عاشت مرحلة التثبيت
+ * في الذاكرة وحدها لعادت النافذة إلى «ابدأ التثبيت» بعد تنزيلٍ اكتمل،
+ * فيبدأ المستخدم تنزيلًا ثانيًا ويُطلب رمز تركيب ثالث بلا داعٍ.
+ *
+ * المخزون **حقائق لا شاشات**: أين وصل التنزيل، وهل أعلن المستخدم أنه بدأ
+ * التركيب. الشاشة تُشتقّ منها في `resolveStep`، فلا مصدرَي حقيقة يتخالفان.
+ *
+ * @typedef {"idle"|"downloading"|"downloaded"|"installing"} InstallStage
+ */
+const INSTALL_STAGES = ["idle", "downloading", "downloaded", "installing"];
+
+export async function getInstallProgress() {
+  const stored = await read([
+    KEYS.installStage,
+    KEYS.downloadId,
+    KEYS.downloadFileName,
+  ]);
+  const stage = stored[KEYS.installStage];
+  const downloadId = stored[KEYS.downloadId];
+  return {
+    stage: INSTALL_STAGES.includes(stage) ? stage : "idle",
+    downloadId: Number.isInteger(downloadId) ? downloadId : null,
+    fileName:
+      typeof stored[KEYS.downloadFileName] === "string"
+        ? stored[KEYS.downloadFileName]
+        : null,
+  };
+}
+
+/**
+ * ينظّف حالة تثبيت لم تعد تعني شيئًا، **قبل أن تُرسم أي شاشة**.
+ *
+ * ⚠️ **هذا ما يمنع دوّامة الإقلاع.** حالةٌ خلّفتها نسخة معطوبة — «تفعيل»
+ * أو «انتظار Runtime» بلا تنزيل ولا رمز — كانت تعيد النافذة إلى شاشة
+ * تقدّمٍ عن عملية لم تبدأ قطّ، وتبقى تدور بلا شيء ينهيها.
+ *
+ * **ما يُمسح:**
+ * 1. مرحلة بقيمة لم تعد في المفردات (`activating` وأخواتها).
+ * 2. مرحلة متقدّمة بلا `downloadId` صالح — لا تنزيل يُستأنف عليه.
+ * 3. مرحلة تخصّ حسابًا آخر على الجهاز نفسه.
+ * 4. رمز تركيب انتهت صلاحيته (ومعه مرحلةُ «يُركّب» التي تعتمد عليه).
+ *
+ * **وما يبقى:** تنزيلٌ مكتمل صالح، وجلسةُ تركيبٍ سارية.
+ *
+ * @param {string|null} email بريد صاحب الجلسة الحالية.
+ * @returns {Promise<string[]>} أسباب ما مُسح — للاختبارات وللتشخيص.
+ */
+export async function reconcileInstallState(email) {
+  const reasons = [];
+  const stored = await read([
+    KEYS.installStage,
+    KEYS.downloadId,
+    KEYS.installOwner,
+    KEYS.installToken,
+  ]);
+
+  const rawStage = stored[KEYS.installStage];
+  const downloadId = stored[KEYS.downloadId];
+  const owner = stored[KEYS.installOwner];
+  const current = email ? String(email).toLowerCase() : null;
+
+  if (rawStage === undefined && downloadId === undefined) {
+    // لا حالة أصلًا؛ نثبّت المالك وننصرف.
+    if (current) await write({ [KEYS.installOwner]: current });
+    return reasons;
+  }
+
+  if (LEGACY_STAGES.has(rawStage)) reasons.push("legacy-stage");
+  if (rawStage !== undefined && !INSTALL_STAGES.includes(rawStage)) {
+    reasons.push("unknown-stage");
+  }
+  if (
+    INSTALL_STAGES.includes(rawStage) &&
+    rawStage !== "idle" &&
+    !Number.isInteger(downloadId)
+  ) {
+    reasons.push("no-download-id");
+  }
+  if (owner && current && owner !== current) reasons.push("other-account");
+
+  // رمز منتهٍ: `getInstallToken` يمسحه من تلقائه، وما يعنينا هنا أن مرحلة
+  // «يُركّب» بلا رمز سارٍ لا شيء ينهيها، فتعود إلى تعليمات الفتح.
+  if (rawStage === "installing" && stored[KEYS.installToken]) {
+    const token = await getInstallToken();
+    if (!token) reasons.push("expired-session");
+  }
+
+  if (reasons.length > 0) {
+    await clearInstallProgress();
+    await clearInstallToken();
+  }
+  if (current) await write({ [KEYS.installOwner]: current });
+
+  return reasons;
+}
+
+export async function setInstallProgress({ stage, downloadId, fileName }) {
+  const payload = {};
+  if (stage !== undefined) {
+    payload[KEYS.installStage] = INSTALL_STAGES.includes(stage) ? stage : "idle";
+  }
+  if (downloadId !== undefined) payload[KEYS.downloadId] = downloadId;
+  if (fileName !== undefined) payload[KEYS.downloadFileName] = fileName;
+  await write(payload);
+}
+
+export async function clearInstallProgress() {
+  await remove([KEYS.installStage, KEYS.downloadId, KEYS.downloadFileName]);
+}
+
+/** بريد صاحب حالة التثبيت المحفوظة، أو `null`. للاختبارات والتشخيص. */
+export async function getInstallOwner() {
+  const stored = await read(KEYS.installOwner);
+  const value = stored[KEYS.installOwner];
+  return typeof value === "string" ? value : null;
+}
+
+/* -------------------------------------------------------------------------
+   إقرار طريقة البدء — لكل حساب على حدة
+   ------------------------------------------------------------------------- */
+
+/**
+ * هل أقرّ **هذا البريد** طريقة البدء؟
+ *
+ * ⚠️ **مقارنة ببريد الحساب لا علامة عامة.** حاسبٌ يتناوب عليه اثنان: من
+ * أقرّ لا يُسأل مرة أخرى، ومن لم يقرّ يُسأل ولو أقرّ زميله على الجهاز نفسه.
+ */
+export async function hasAcknowledgedPlan(email) {
+  if (!email) return false;
+  const stored = await read(KEYS.planAckFor);
+  const value = stored[KEYS.planAckFor];
+  return typeof value === "string" && value === String(email).toLowerCase();
+}
+
+export async function acknowledgePlan(email) {
+  if (!email) return;
+  await write({ [KEYS.planAckFor]: String(email).toLowerCase() });
 }
 
 /* -------------------------------------------------------------------------

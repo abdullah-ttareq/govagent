@@ -44,7 +44,26 @@ param(
     # مفسّر بايثون الذي يحمل PyInstaller. **لا يُفترض أن `python` على
     # المسار هو الصحيح**: كثير من أجهزة التطوير فيها أكثر من نسخة، وواحدة
     # منها فقط فيها تبعيات الـRuntime.
-    [string]$PythonExe = "python"
+    [string]$PythonExe = "python",
+
+    # --- وضع العرض الأكاديمي -------------------------------------------
+    # ⚠️ **فارغة افتراضيًا = بناء إنتاجي بلا تغيير.** تمريرها يبني نسخة
+    # عرض تستعمل محرّكًا مثبَّتًا على جهاز العميل بدل تنزيل مودل من Azure.
+    # العنوان يجب أن يكون على الاسترجاع المحلي، ويرفض الـRuntime غيره.
+    [string]$DemoEngineUrl = "",
+    [ValidateSet("", "ollama")]
+    [string]$DemoEngineType = "",
+    [string]$DemoModel = "",
+
+    # --- مكان معالجة المحادثة ------------------------------------------
+    # ⚠️ **فارغة = محلي، وهو الافتراض الأحفظ للخصوصية**: لا يغادر نصّ
+    # المستخدم جهازه إلا بقرار مكتوب هنا.
+    #
+    # `cloud` يجعل الـRuntime يمرّر المحادثة إلى خدمة GovMind ببيان اعتماد
+    # الجهاز، ولا يُنزَّل مودل ولا يُشغَّل `llama-server`. **مفتاح المزوّد
+    # يبقى على السيرفر ولا يدخل هذه الحزمة.**
+    [ValidateSet("", "local", "cloud")]
+    [string]$ChatMode = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,8 +102,18 @@ if (-not $SkipUi) {
 
     Push-Location $Frontend
     try {
-        # `GOVMIND_DESKTOP` يفعّل `output: export`، و`NEXT_PUBLIC_...`
-        # يجعل الواجهة تنادي الأصل نفسه بلا أي عنوان مكتوب.
+        # ⚠️ **تنظيف مخرجات بناء سابق قبل البدء.** بناء الويب وبناء سطح
+        # المكتب يتشاركان مجلد `.next`، ويولّد كلٌّ منهما أنواع مسارات
+        # لشجرته هو. بقايا بناء الويب تجعل فحص الأنواع في بناء سطح المكتب
+        # يشير إلى مسارات لا يبنيها (`/admin` و`/login`) فيفشل بلا سبب
+        # ظاهر في الشيفرة.
+        Remove-Item (Join-Path $Frontend ".next") -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $Frontend "out")   -Recurse -Force -ErrorAction SilentlyContinue
+
+        # `GOVMIND_DESKTOP` يفعّل `output: export` **ويقصر شجرة المسارات
+        # على `*.desktop.tsx`**، فلا تُبنى صفحة دخول ولا لوحة إدارة ولا
+        # صفحة إعدادات سيرفر. و`NEXT_PUBLIC_...` يجعل الواجهة تنادي الأصل
+        # نفسه بلا أي عنوان مكتوب.
         $env:GOVMIND_DESKTOP = "1"
         $env:NEXT_PUBLIC_GOVMIND_DESKTOP = "1"
         npm run build
@@ -100,7 +129,24 @@ if (-not $SkipUi) {
     if (-not (Test-Path (Join-Path $UiOut "index.html"))) {
         throw "لم يُنتج تصدير الواجهة ملف index.html."
     }
-    Copy-Item $UiOut (Join-Path $Staging "ui") -Recurse -Force
+
+    # ⚠️ **لا صفحة دخول في التثبيت.** فحصٌ صريح لا اعتماد على الإعداد:
+    # عودةُ `/login/` تعني عودةَ العطل الذي رآه العميل — نموذج دخول ثانٍ
+    # يردّ «Method Not Allowed».
+    foreach ($forbiddenRoute in @("login", "admin", "settings")) {
+        if (Test-Path (Join-Path $UiOut $forbiddenRoute)) {
+            throw "تصدير الواجهة يحتوي مسار '$forbiddenRoute' ولا يجوز أن يحتويه."
+        }
+    }
+
+    $UiStage = Join-Path $Staging "ui"
+    Copy-Item $UiOut $UiStage -Recurse -Force
+
+    # ملفات نسخة الويب لا مكان لها في تثبيت سطح المكتب: هيكل سطح المكتب
+    # لا يسجّل عامل خدمة، والتطبيق مثبَّت على ويندوز لا مضاف إلى شاشة هاتف.
+    foreach ($webOnly in @("sw.js", "offline.html", "manifest.webmanifest")) {
+        Remove-Item (Join-Path $UiStage $webOnly) -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -112,7 +158,16 @@ if (-not $SkipRuntime) {
 
     Push-Location $RuntimeDir
     try {
-        & $PythonExe -m PyInstaller --noconfirm --clean govmind-runtime.spec
+        # PyInstaller يكتب سطور INFO على stderr. مع
+        # `$ErrorActionPreference = "Stop"` تحوّلها PowerShell إلى خطأ
+        # قاتل (`NativeCommandError`) **رغم أن البناء نجح**. الحكم هنا
+        # لرمز الخروج وحده، وهو ما تقوله الأداة فعلًا عن نفسها.
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $PythonExe -m PyInstaller --noconfirm --clean govmind-runtime.spec
+        }
+        finally { $ErrorActionPreference = $previousPreference }
         if ($LASTEXITCODE -ne 0) { throw "فشل بناء الـRuntime." }
     }
     finally { Pop-Location }
@@ -144,13 +199,43 @@ Copy-Item $Vendor (Join-Path $Staging "llama.cpp") -Recurse -Force
 # ---------------------------------------------------------------------------
 Write-Step "كتابة الإعداد العام"
 # ⚠️ عنوان فقط. أي مفتاح هنا يعني تسريبه إلى كل جهاز عميل.
-@{
+$ConfigMap = [ordered]@{
     control_plane_url = $ControlPlaneUrl
     # القناة تُكتب في الإعداد كذلك لا في اسم الملف وحده: من يفتح تثبيتًا
     # على جهاز بعد شهور يجب أن يعرف من أين جاء.
     channel           = $Channel
     built_at          = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-} | ConvertTo-Json |
+}
+
+# ⚠️ **الثلاثة معًا أو لا شيء.** إعدادٌ ناقص يجعل الـRuntime يتردّد بين
+# وضعين، والأوضح أن يرفض البناء بدل أن يشحن التباسًا.
+$DemoParts = @($DemoEngineUrl, $DemoEngineType, $DemoModel) | Where-Object { $_ }
+if ($DemoParts.Count -gt 0 -and $DemoParts.Count -lt 3) {
+    throw "وضع العرض يحتاج -DemoEngineUrl و -DemoEngineType و -DemoModel معًا."
+}
+if ($DemoParts.Count -eq 3) {
+    $ConfigMap.demo_engine_url  = $DemoEngineUrl
+    $ConfigMap.demo_engine_type = $DemoEngineType
+    $ConfigMap.demo_model       = $DemoModel
+    Write-Host "    وضع العرض: $DemoEngineType / $DemoModel" -ForegroundColor Yellow
+    Write-Host "    (لا يُنزَّل مودل من Azure، ولا يُشغَّل llama-server)" -ForegroundColor Yellow
+}
+
+# ⚠️ **يتعارض مع وضع العرض.** كلاهما يلغي المودل المرفق، وشحنُ الاثنين
+# معًا يشحن التباسًا: أيّهما يعمل يقرّره الـRuntime لا من بنى الحزمة.
+if ($ChatMode -eq "cloud" -and $DemoParts.Count -eq 3) {
+    throw "-ChatMode cloud لا يجتمع مع وضع العرض. اختر واحدًا."
+}
+if ($ChatMode) {
+    $ConfigMap.chat_mode = $ChatMode
+    if ($ChatMode -eq "cloud") {
+        Write-Host "    معالجة المحادثة: سحابية عبر خدمة GovMind" -ForegroundColor Yellow
+        Write-Host "    (لا يُنزَّل مودل، ولا يُشغَّل llama-server)" -ForegroundColor Yellow
+        Write-Host "    (نصّ المستخدم يغادر الجهاز - تعرضه الواجهة صراحة)" -ForegroundColor Yellow
+    }
+}
+
+$ConfigMap | ConvertTo-Json |
     Set-Content -Path (Join-Path $Staging "govmind.config.json") -Encoding utf8
 
 if ($Channel -eq "development") {
@@ -169,6 +254,26 @@ $Forbidden = @(
     "DEVICE_HASH_PEPPER",
     "AccountKey="
 )
+
+# ⚠️ **ألفاظ لا مكان لها في منتج فردي.** المنتج حساب واحد واشتراك واحد
+# وجهاز فعّال واحد؛ لا جهة ولا مسؤول نظام يراجعه العميل. وجود أيٍّ منها في
+# واجهة مثبَّتة يعني أن نصًّا من المنتج القديم تسرّب إلى حزمة العميل.
+$ForbiddenWords = @(
+    [char]0x0645 + "سؤول النظام",
+    [char]0x0645 + "سؤول الجهة",
+    [char]0x062C + "هتك",
+    [char]0x0628 + "ريد العمل"
+)
+$UiStagePath = Join-Path $Staging "ui"
+if (Test-Path $UiStagePath) {
+    foreach ($word in $ForbiddenWords) {
+        $wordHits = Get-ChildItem $UiStagePath -Recurse -File |
+            Select-String -Pattern $word -SimpleMatch -List -ErrorAction SilentlyContinue
+        if ($wordHits) {
+            throw "واجهة التثبيت تحتوي لفظًا من المنتج القديم: '$word' في $($wordHits[0].Path)"
+        }
+    }
+}
 foreach ($needle in $Forbidden) {
     $hits = Select-String -Path (Join-Path $Staging "*") -Pattern $needle `
         -SimpleMatch -List -ErrorAction SilentlyContinue

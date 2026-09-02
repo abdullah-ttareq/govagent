@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,7 +53,11 @@ FAKE_CONNECTION_STRING = (
 
 
 def token_for(user_id: str, *, expired: bool = False) -> str:
-    """يصدر رمز Supabase صالح البنية موقّعًا بالسرّ التجريبي."""
+    """يصدر رمز Supabase صالح البنية موقّعًا بالسرّ التجريبي (HS256).
+
+    ``iss`` مشتقّ من الإعداد لا مكتوبٌ يدويًا: المتحقّق يشترط أن يكون
+    المُصدِر هو مشروع هذا السيرفر، ورمزٌ بلا `iss` يُرفض.
+    """
     now = datetime.now(UTC)
     return jwt.encode(
         {
@@ -60,6 +65,7 @@ def token_for(user_id: str, *, expired: bool = False) -> str:
             "email": f"{user_id[:8]}@govmind.test",
             "aud": "authenticated",
             "role": "authenticated",
+            "iss": settings.supabase_url.strip().rstrip("/") + "/auth/v1",
             "iat": int(now.timestamp()),
             "exp": int(
                 (now - timedelta(hours=1) if expired else now + timedelta(hours=1))
@@ -143,6 +149,14 @@ class FakeSupabase:
             "device_activations": [],
         }
         self._next_id = 100
+        #: قفل لكل اشتراك يحاكي ``select ... for update`` في دالة الاستبدال.
+        #: الوجود الحقيقي لذلك القفل يثبته
+        #: ``test_device_replacement.py::test_migration_locks_the_subscription_row``
+        #: على نصّ الترحيل، ويثبت أثره قسم الاختبارات داخل
+        #: ``0004_device_replacement.sql`` على PostgreSQL حقيقي.
+        self._subscription_locks: dict[int, threading.Lock] = {}
+        #: يُبطئ الاستبدال عمدًا لتتشابك الخيوط في اختبار التزامن.
+        self.replacement_delay = 0.0
 
     # -- أدوات المرشّحات -------------------------------------------------
     @staticmethod
@@ -176,9 +190,103 @@ class FakeSupabase:
             for existing in self.tables["device_activations"]
         )
 
+    # -- دوال القاعدة (RPC) ---------------------------------------------
+    def _replace_device_activation(self, params: dict[str, Any]) -> httpx.Response:
+        """يحاكي عقد ``replace_device_activation``: إبطال وتفعيل معًا أو لا شيء.
+
+        **يحاكي طبقتَي الحماية كلتيهما** كما في القاعدة: القفل على صفّ
+        الاشتراك يسلسل المحاولات المتزامنة، والفهرس الفريد الجزئي هو
+        الحَكَم الأخير إن أفلت شيء من القفل.
+        """
+        import time
+
+        subscription_id = int(params["p_subscription_id"])
+        device_hash = params["p_device_hash"]
+
+        subscription = next(
+            (s for s in self.tables["subscriptions"] if s["id"] == subscription_id),
+            None,
+        )
+        if subscription is None or subscription["status"] not in ("active", "trial"):
+            return httpx.Response(
+                400, json={"code": "22023", "message": "subscription_not_serviceable"}
+            )
+
+        lock = self._subscription_locks.setdefault(subscription_id, threading.Lock())
+        with lock:
+            rows = self.tables["device_activations"]
+            active = [
+                row
+                for row in rows
+                if row["subscription_id"] == subscription_id
+                and row.get("revoked_at") is None
+            ]
+
+            # الجهاز نفسه: لا استبدال، تحديث آخر ظهور فقط.
+            same = next(
+                (row for row in active if row["device_id_hash"] == device_hash), None
+            )
+            if same is not None:
+                same["last_seen_at"] = datetime.now(UTC).isoformat()
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "out_activation_id": same["id"],
+                            "out_revoked_id": None,
+                            "out_replaced": False,
+                        }
+                    ],
+                )
+
+            revoked_id = None
+            for row in active:
+                row["revoked_at"] = datetime.now(UTC).isoformat()
+                revoked_id = row["id"]
+
+            if self.replacement_delay:
+                time.sleep(self.replacement_delay)
+
+            candidate = {
+                "subscription_id": subscription_id,
+                "device_id_hash": device_hash,
+                "device_name": params["p_device_name"],
+                "activated_at": datetime.now(UTC).isoformat(),
+                "last_seen_at": datetime.now(UTC).isoformat(),
+                "revoked_at": None,
+            }
+            if self._violates_one_active_device(candidate):
+                return httpx.Response(
+                    409,
+                    json={
+                        "code": "23505",
+                        "message": "duplicate key value violates unique constraint",
+                    },
+                )
+
+            self._next_id += 1
+            candidate["id"] = self._next_id
+            rows.append(candidate)
+
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "out_activation_id": candidate["id"],
+                        "out_revoked_id": revoked_id,
+                        "out_replaced": revoked_id is not None,
+                    }
+                ],
+            )
+
     def handler(self, request: httpx.Request) -> httpx.Response:
         table = request.url.path.rsplit("/", 1)[-1]
         params = dict(request.url.params)
+
+        if "/rpc/" in request.url.path:
+            if table == "replace_device_activation":
+                return self._replace_device_activation(json.loads(request.content))
+            raise AssertionError(f"دالة قاعدة غير محاكاة: {table}")
 
         if request.method == "GET":
             rows = self._select(table, params)
@@ -315,10 +423,15 @@ def test_token_signed_with_another_secret_is_rejected(fake_supabase):
 
 
 def test_account_without_a_profile_is_refused(fake_supabase):
-    """حساب في auth بلا ملف عمل: رفض برسالة تشرح، لا انهيار ولا وصول."""
+    """حساب في auth بلا ملف عمل: رفض برسالة تشرح، لا انهيار ولا وصول.
+
+    **ولا تحيل الرسالة على مسؤول**: المنتج اشتراك فردي ولا مسؤول فيه.
+    """
     response = client.get("/api/account/subscription", headers=auth(ORPHAN))
     assert response.status_code == 403
-    assert "غير مرتبط بأي جهة" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "غير مكتمل التجهيز" in detail
+    assert "مسؤول" not in detail
 
 
 # ===========================================================================
@@ -379,7 +492,9 @@ def test_organization_without_a_subscription_is_blocked(fake_supabase):
     ]
     response = client.get("/api/account/subscription", headers=auth(EMPLOYEE_A))
     assert response.status_code == 403
-    assert "لا يوجد اشتراك مسجّل" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "لا يوجد اشتراك مرتبط بحسابك" in detail
+    assert "مسؤول" not in detail
 
 
 # ===========================================================================
@@ -425,7 +540,11 @@ def test_second_device_is_refused_while_the_first_is_active(fake_supabase):
 
     response = activate(EMPLOYEE_A, DEVICE_OTHER, name="حاسب المنزل")
     assert response.status_code == 409
-    assert "مفعّل بالفعل على جهاز آخر" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "مفعّل حاليًا على جهاز آخر" in detail
+    # ⚠️ الرسالة تدلّ على الحل الذاتي، **لا على مسؤول يوافق**.
+    assert "استبدال الجهاز السابق" in detail
+    assert "مسؤول" not in detail
 
     active = [
         row
@@ -615,16 +734,27 @@ def test_download_url_never_leaks_the_connection_string(
     assert FAKE_CONNECTION_STRING not in response.text
 
 
-def test_download_is_refused_without_an_activated_device(
+def test_first_install_may_download_before_any_device_is_activated(
     fake_supabase, azure_configured
 ):
+    """**اختبار انحدار للدائرة المقفلة.**
+
+    هوية الجهاز يولّدها الـRuntime، والـRuntime **داخل المثبّت**. فاشتراط
+    تفعيلٍ سابقٍ للتحميل كان يعني: لا تنزيل بلا تفعيل، ولا تفعيل بلا الملف
+    الذي لا يُنزَّل. أول تثبيت يجب أن يمرّ.
+    """
+    assert fake_supabase.tables["device_activations"] == []
+
     response = download(EMPLOYEE_A, DEVICE_A)
-    assert response.status_code == 409
-    assert "لم يُفعَّل أي جهاز" in response.json()["detail"]
+
+    assert response.status_code == 200, response.text
+    assert response.json()["file_name"]
+    # ولا يُفعَّل شيء بمجرد التحميل: التفعيل من الـRuntime بعد التركيب.
+    assert fake_supabase.tables["device_activations"] == []
 
 
 def test_download_is_refused_from_a_different_device(fake_supabase, azure_configured):
-    """**الشرط الرابع:** الطالب يجب أن يكون الجهاز المفعّل نفسه."""
+    """**ما يبقى محروسًا:** حاسبٌ ثانٍ لا يسحب المثبّت وخانةُ الاشتراك مشغولة."""
     activate(EMPLOYEE_A, DEVICE_A)
     response = download(EMPLOYEE_A, DEVICE_OTHER)
     assert response.status_code == 409

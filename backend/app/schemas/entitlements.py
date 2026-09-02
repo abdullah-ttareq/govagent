@@ -11,7 +11,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: طول البصمة الخام المقبول من العميل. الحد الأعلى يمنع جسمًا ضخمًا.
 MIN_DEVICE_ID = 8
@@ -32,12 +32,16 @@ class AccountLoginRequest(BaseModel):
 
 
 class AccountOut(BaseModel):
-    """صاحب الحساب كما يُعرض في الإضافة."""
+    """صاحب الحساب كما يُعرض في الإضافة.
+
+    ⚠️ **بلا دور وبلا معرّف مساحة.** المنتج اشتراك فردي: لا لقب «مسؤول»
+    يُعرض ولا مفردات مؤسسات. الدور والمساحة بنيتان تحتاجهما RLS في
+    القاعدة، **ولا يحتاجهما عميلٌ أبدًا**، فلا تخرجان من السيرفر أصلًا —
+    وهذا أضمن من التعهّد بألا تُعرضا.
+    """
 
     email: str
     full_name: str
-    role: Literal["admin", "employee"]
-    organization_id: int
 
 
 class AccountSessionResponse(BaseModel):
@@ -144,3 +148,86 @@ class InstallerDownloadResponse(BaseModel):
     file_name: str
     expires_at: datetime
     expires_in_minutes: int
+
+
+class RegistrationRequest(BaseModel):
+    """طلب إنشاء حساب جديد.
+
+    **أربعة حقول لا خمسة.** المنتج اشتراك فردي: حساب واحد واشتراك واحد
+    وجهاز فعّال واحد، **ولا يُسأل العميل عن جهة**. المساحة التي يحتاجها
+    عزل RLS يولّدها السيرفر من معرّف الحساب ولا يراها العميل.
+
+    ⚠️ ولا حقل لرابط ولا لمفتاح — كبقية طلبات الإضافة.
+    """
+
+    full_name: str = Field(..., min_length=2, max_length=200, description="الاسم الكامل")
+    email: str = Field(..., min_length=3, max_length=200)
+    password: str = Field(..., min_length=8, max_length=200)
+    confirm_password: str = Field(..., min_length=8, max_length=200)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "full_name": "سارة العتيبي",
+                "email": "sara@example.gov.sa",
+                "password": "••••••••",
+                "confirm_password": "••••••••",
+            }
+        }
+    )
+
+    @field_validator("full_name")
+    @classmethod
+    def must_not_be_blank(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if len(cleaned) < 2:
+            raise ValueError("القيمة قصيرة جدًا")
+        return cleaned
+
+    @model_validator(mode="after")
+    def passwords_must_match(self) -> "RegistrationRequest":
+        """يُفحص التطابق على السيرفر كذلك لا في المتصفح وحده.
+
+        فحص المتصفح تحسينٌ لتجربة الاستخدام، ويمكن تجاوزه بطلب مباشر —
+        فالسيرفر لا يبني على أن العميل فحص.
+        """
+        if self.password != self.confirm_password:
+            raise ValueError("كلمتا المرور غير متطابقتين")
+        return self
+
+
+class RegistrationResponse(BaseModel):
+    """نتيجة التسجيل.
+
+    عند نجاح الدخول التلقائي تُعاد الجلسة كاملة، فتتابع الإضافة إلى حالة
+    الاشتراك وتفعيل الجهاز بلا خطوة إضافية. وإن كان المشروع يشترط تأكيد
+    البريد تكون الجلسة فارغة و`requires_email_confirmation` صحيحة.
+    """
+
+    requires_email_confirmation: bool
+    email: str
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_in: int | None = None
+    account: AccountOut | None = None
+
+
+class DeviceReplaceRequest(BaseModel):
+    """استبدال الجهاز السابق بهذا الجهاز — يفعله صاحب الحساب بنفسه.
+
+    ⚠️ **كلمة المرور مطلوبة مرة أخرى.** رمز الدخول وحده لا يكفي لعملية
+    تُوقف GovMind على حاسب آخر: من ترك جلسته مفتوحة على جهاز عام يجب ألا
+    يفقد بها جهازه. والتحقق يتم عبر Supabase Auth لا بمقارنة محلية.
+    """
+
+    device_id: str = Field(..., min_length=MIN_DEVICE_ID, max_length=MAX_DEVICE_ID)
+    device_name: str = Field("جهاز غير مسمّى", max_length=120)
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+class DeviceReplaceResponse(BaseModel):
+    """نتيجة الاستبدال، ومعها حالة الاشتراك بعده."""
+
+    #: هل أُبطل جهاز سابق فعلًا؟ خطأ إن كان هذا الجهاز هو المفعّل أصلًا.
+    replaced: bool
+    subscription: SubscriptionStatusResponse

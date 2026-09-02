@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ModelProviderName = Literal["mock", "oracle", "lmstudio", "local"]
+ModelProviderName = Literal["mock", "oracle", "lmstudio", "local", "livekit"]
 
 
 class Settings(BaseSettings):
@@ -113,6 +113,35 @@ class Settings(BaseSettings):
     llamacpp_timeout_seconds: float = 300.0
     llamacpp_max_tokens: int = 1500
     llamacpp_temperature: float = 0.3
+
+    # ------------------------------------------------------------------
+    # LiveKit Inference — **استدلال سحابي، لا محلي**
+    # ------------------------------------------------------------------
+    # ⚠️ **هذا المزوّد يرسل نصّ المحادثة إلى خدمة خارجية.** بخلاف
+    # `llamacpp` و`lmstudio` اللذين لا يغادرهما النصّ الجهاز. أي واجهة
+    # تعرضه يجب أن تقول ذلك صراحة — انظر `LiveKitModelProvider`.
+    #
+    # ⚠️ **المفتاح والسرّ يبقيان على السيرفر.** لا يُرسلان إلى متصفح ولا
+    # إلى الإضافة ولا إلى الـRuntime على جهاز العميل، ولا يدخلان أي حزمة
+    # واجهة. الرمز الذي يُرسل إلى البوابة **قصير العمر ويُولَّد هنا**.
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+
+    #: معرّف المودل بصيغة `provider/model`.
+    livekit_model: str = "google/gemini-2.5-flash-lite"
+
+    #: عنوان بوابة الاستدلال. فارغ = يُشتقّ من `livekit_url` (إنتاج أو
+    #: staging)، فلا يحتاج المشغّل ضبطه في الحالة المعتادة.
+    livekit_inference_url: str = ""
+
+    #: مهلة منتهية دائمًا — لا انتظار بلا حدّ لخدمة خارجية.
+    livekit_timeout_seconds: float = 120.0
+    livekit_max_tokens: int = 1500
+    livekit_temperature: float = 0.3
+
+    #: عمر رمز الوصول بالثواني. قصير عمدًا: يُولَّد لكل طلب، ولا يُخزَّن.
+    livekit_token_ttl_seconds: int = 600
 
     # المتجهات (Embeddings) — mock يعمل محليًا بلا أي خدمة خارجية.
     embedding_provider: str = "mock"

@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   applyTheme,
   getThemeServerSnapshot,
   getThemeSnapshot,
   setThemeChoice,
-  type ThemeChoice,
+  subscribeToTheme,
 } from "@/lib/theme";
-import { subscribeToTheme } from "@/lib/theme";
 
 function SunIcon() {
   return (
@@ -32,23 +31,24 @@ function MoonIcon() {
   );
 }
 
-const OPTIONS: {
-  value: ThemeChoice;
-  label: string;
-  Icon: () => React.ReactElement;
-}[] = [
-  { value: "light", label: "فاتح", Icon: SunIcon },
-  { value: "dark", label: "داكن", Icon: MoonIcon },
-];
-
 /**
- * مبدّل المظهر — زرّ أيقونة صغير يفتح قائمة بخيارين: فاتح وداكن.
+ * مبدّل المظهر — **شريحتان: قمر وشمس، والفعّالة مُبرَزة**.
  *
- * **زرّ وقائمة لا زرّان ظاهران:** المظهر إعدادٌ يُضبط مرة ثم يُنسى، فلا
- * يستحق عرضًا دائمًا في زاوية أو في شريط جانبي. الزرّ يعرض أيقونة الوضع
- * الفعّال — شمسًا في الفاتح وقمرًا في الداكن — فتبقى الحالة مقروءة بلا فتح.
+ * هذا شكل التصميم المعتمد: الخياران ظاهران معًا في غلاف واحد، والوضع
+ * الحالي مُبرَز بقرص داكن. وهو يحفظ ما طُلب سابقًا: **وضعان لا ثلاثة**،
+ * وأيقونتان لا غير، ونقرةٌ واحدة تكفي للانتقال.
  *
- * ⚠️ خيار «تلقائي» أُزيل من الموقع وبقي في الإضافة وحدها — انظر `lib/theme`.
+ * ⚠️ **لا «تلقائي» ولا «الجهاز» ولا أيقونة شاشة.** وضعٌ يتبع الجهاز
+ * يتبدّل تحت يد الموظف بلا فعل منه — عند غروب الشمس أو حين يغيّر ويندوز
+ * مظهره. القيم القديمة (`system`/`auto`) تُهاجَر إلى «فاتح» في `lib/theme`.
+ *
+ * ⚠️ **كل شريحة تحمل نصّ فعلها**: «تفعيل الوضع الفاتح» على الشمس،
+ * و«تفعيل الوضع الداكن» على القمر — فيقرأ مستخدم قارئ الشاشة ما سيحدث،
+ * و`aria-pressed` يقول له أين هو الآن.
+ *
+ * التخزين في `localStorage` عبر `lib/theme`، ويقرؤه سكربتٌ في `<head>`
+ * **قبل أول رسم** — فيبقى الاختيار بعد تحديث الصفحة وبعد إعادة تشغيل
+ * الـRuntime، بلا وميض في وجه من اختار الداكن.
  */
 export default function ThemeToggle({ className = "" }: { className?: string }) {
   // `localStorage` مخزن خارج React: يُقرأ هكذا لا بـ`useState` في `useEffect`.
@@ -58,88 +58,32 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     getThemeServerSnapshot,
   );
 
-  const [isOpen, setIsOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const menuId = useId();
-
-  const active = OPTIONS.find((option) => option.value === choice) ?? OPTIONS[0];
-
   useEffect(() => {
     // يُطبَّق كلما استقرّ الاختيار: أثناء الإماهة يعطي `useSyncExternalStore`
-    // قيمة السيرفر (الافتراضي) ثم يعيد الرسم بقيمة المتصفح، فلولا التطبيق
-    // هنا لبقيت الصفحة على الوضع الافتراضي بعد أن استقرّ الاختيار على غيره.
+    // قيمة السيرفر (الافتراضي) ثم يعيد الرسم بقيمة المتصفح.
     applyTheme(choice);
   }, [choice]);
 
-  // القائمة تُغلق بالنقر خارجها وبـEscape، كأي طبقة عائمة في الواجهة.
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setIsOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-        rootRef.current?.querySelector("button")?.focus();
-      }
-    }
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isOpen]);
-
   return (
-    <div ref={rootRef} className={`gv-theme ${className}`.trim()}>
+    <div className={`gv-theme__seg ${className}`.trim()}>
       <button
         type="button"
-        onClick={() => setIsOpen((open) => !open)}
-        className="gv-theme__trigger"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        aria-controls={menuId}
-        aria-label={`المظهر: ${active.label}`}
-        title={`المظهر: ${active.label}`}
+        aria-label="تفعيل الوضع الفاتح"
+        title="تفعيل الوضع الفاتح"
+        aria-pressed={choice === "light"}
+        onClick={() => setThemeChoice("light")}
       >
-        <active.Icon />
+        <SunIcon />
       </button>
-
-      {isOpen && (
-        <div id={menuId} role="menu" className="gv-theme__menu">
-          {OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={choice === option.value}
-              onClick={() => {
-                setThemeChoice(option.value);
-                setIsOpen(false);
-              }}
-              className="gv-theme__item"
-            >
-              <option.Icon />
-              <span>{option.label}</span>
-              {choice === option.value && (
-                <svg
-                  viewBox="0 0 20 20"
-                  aria-hidden="true"
-                  className="size-4 shrink-0"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M16.7 5.3a.75.75 0 0 1 0 1.06l-8 8a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 1 1 1.06-1.06L8.17 12.8l7.47-7.47a.75.75 0 0 1 1.06 0"
-                  />
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <button
+        type="button"
+        aria-label="تفعيل الوضع الداكن"
+        title="تفعيل الوضع الداكن"
+        aria-pressed={choice === "dark"}
+        onClick={() => setThemeChoice("dark")}
+      >
+        <MoonIcon />
+      </button>
     </div>
   );
 }

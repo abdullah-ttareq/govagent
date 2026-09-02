@@ -10,6 +10,7 @@ import {
   cancelDownload,
   describeInterruption,
   formatBytes,
+  openDownload,
   percentOf,
   queryDownload,
   showInFolder,
@@ -175,13 +176,54 @@ describe("الإلغاء", () => {
   });
 });
 
-describe("لا تشغيل تلقائي لأي ملف", () => {
-  it("«أظهر الملف» يفتح المجلد ولا ينفّذ شيئًا", async () => {
+describe("الإظهار والفتح فعلان مختلفان", () => {
+  it("«إظهار في المجلد» يفتح المجلد ولا يفتح الملف", async () => {
     const id = await startDownload(SIGNED_URL, "GovMindSetup.exe");
     showInFolder(id);
 
     expect(chrome.downloads.show).toHaveBeenCalledWith(id);
-    // `chrome.downloads.open` هو ما يشغّل الملف، ولا وجود له في الشيفرة.
-    expect(chrome.downloads.open).toBeUndefined();
+    expect(chrome.downloads.open).not.toHaveBeenCalled();
+  });
+
+  it("«فتح ملف التثبيت» ينادي chrome.downloads.open ويعيد النجاح", async () => {
+    const id = await startDownload(SIGNED_URL, "GovMindSetup.exe");
+
+    await expect(openDownload(id)).resolves.toBe(true);
+    expect(chrome.downloads.open).toHaveBeenCalledWith(id);
+    // ⚠️ الفتح **لا يُظهر** الملف كذلك: لكل زرّ فعله.
+    expect(chrome.downloads.show).not.toHaveBeenCalled();
+  });
+
+  it("⚠️ رفض المتصفح يعود بـfalse ولا يرمي ولا يحاول طريقًا آخر", async () => {
+    const id = await startDownload(SIGNED_URL, "GovMindSetup.exe");
+    chrome.downloads.__refuseOpen = true;
+    try {
+      await expect(openDownload(id)).resolves.toBe(false);
+    } finally {
+      chrome.downloads.__refuseOpen = false;
+    }
+  });
+
+  it("⚠️ متصفح بلا `downloads.open` يعود بـfalse بلا انهيار", async () => {
+    const id = await startDownload(SIGNED_URL, "GovMindSetup.exe");
+    const original = chrome.downloads.open;
+    delete chrome.downloads.open;
+    try {
+      await expect(openDownload(id)).resolves.toBe(false);
+    } finally {
+      chrome.downloads.open = original;
+    }
+  });
+
+  it("⚠️ رسالة الفشل لا تحمل مسار الملف ولا رابط التنزيل", async () => {
+    const id = await startDownload(SIGNED_URL, "GovMindSetup.exe");
+    chrome.downloads.__refuseOpen = true;
+    try {
+      const outcome = await openDownload(id);
+      // القيمة منطقية لا نصّية: لا نصّ يمكن أن يحمل مسارًا أو رابطًا.
+      expect(typeof outcome).toBe("boolean");
+    } finally {
+      chrome.downloads.__refuseOpen = false;
+    }
   });
 });
