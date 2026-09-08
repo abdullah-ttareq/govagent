@@ -1,57 +1,57 @@
-## مزود المودل
+## Model Provider
 
-يُختار مزود المودل من خلال متغير `MODEL_PROVIDER` في ملف `.env`.
+The model provider is selected through the `MODEL_PROVIDER` variable in the `.env` file.
 
-| القيمة     | الوصف                                                                |
-| ---------- | -------------------------------------------------------------------- |
-| `mock`     | الافتراضي، يعمل بدون قاعدة بيانات أو مفاتيح خارجية ويُستخدم للتجربة. |
-| `lmstudio` | مودل محلي يعمل على جهاز المستخدم أو سيرفر الجهة.                     |
-| `local`    | مودل يعمل داخل سيرفر الجهة — واجهة مستقبلية.                         |
+| Value      | Description                                                                          |
+| ---------- | ------------------------------------------------------------------------------------ |
+| `mock`     | Default. Runs without a database or external keys, and is used for testing and demos. |
+| `lmstudio` | A local model running on the user's machine or on the organization's server.          |
+| `local`    | A model running inside the organization's server — a future interface.                |
 
 ```env
 MODEL_PROVIDER=mock
 ```
 
-**Mock Provider هو الافتراضي**، ويتيح تشغيل المشروع وتجربة الواجهات بدون الحاجة إلى بيانات اعتماد خارجية.
+**The Mock provider is the default.** It lets you run the project and try out the interfaces without needing any external credentials.
 
-### LM Studio — مودل محلي
+### LM Studio — Local Model
 
-يمكن استخدام `MODEL_PROVIDER=lmstudio` لتشغيل مودل محلي من خلال LM Studio. يعمل الاتصال داخل الجهاز أو شبكة الجهة، ولا يحتاج إلى مفتاح API.
+Set `MODEL_PROVIDER=lmstudio` to run a local model through LM Studio. The connection stays inside your machine or the organization's network, and no API key is required.
 
-**التشغيل:**
+**Setup:**
 
-1. ثبّت LM Studio وافتحه.
-2. حمّل المودل المطلوب.
-3. شغّل الخادم المحلي.
-4. اضبط إعدادات المودل في ملف `.env`.
-5. شغّل الـBackend والـFrontend.
-6. أرسل رسالة من الواجهة للتأكد من عمل المودل.
+1. Install LM Studio and open it.
+2. Download the model you want to use.
+3. Start the local server.
+4. Configure the model settings in the `.env` file.
+5. Start the backend and the frontend.
+6. Send a message from the interface to confirm the model is working.
 
-مثال:
+Example:
 
 ```env
 MODEL_PROVIDER=lmstudio
 LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
-LM_STUDIO_MODEL=اسم-المودل
+LM_STUDIO_MODEL=model-name
 LM_STUDIO_TIMEOUT_SECONDS=300
 LM_STUDIO_MAX_TOKENS=1500
 LM_STUDIO_API_KEY=
 ```
 
-يعمل المودل المحلي مع بقية مكونات النظام مثل RAG والمصادر وحفظ المحادثات وعزل بيانات الجهات.
+The local model works with the rest of the system's components, including RAG, sources, conversation history, and per-organization data isolation.
 
-## التشغيل
+## Running the Project
 
-يتطلب المشروع:
+Requirements:
 
-* Node.js 20 أو أحدث
-* Python 3.11 أو أحدث
-* متصفح Chrome أو Edge لتجربة الإضافة
+* Node.js 20 or newer
+* Python 3.11 or newer
+* Chrome or Edge to try the extension
 
-لا يحتاج التشغيل المحلي إلى إعداد خدمات خارجية.
+Running locally does not require setting up any external services.
 
-## الاستضافة
+## Hosting
 
-يمكن تشغيل النظام على سيرفر الجهة أو على جهاز محلي حسب بيئة الاستخدام ومتطلبات المشروع.
+The system can run on the organization's server or on a local machine, depending on your environment and project requirements.
 
-يجب عدم رفع ملف `.env` أو أي مفاتيح أو بيانات اعتماد حقيقية إلى المستودع. الملف المسموح برفعه هو `.env.example` فقط، ويجب أن يخلو من القيم السرية.
+Never push the `.env` file or any real keys or credentials to the repository. The only file allowed in the repo is `.env.example`, and it must not contain any secret values.
